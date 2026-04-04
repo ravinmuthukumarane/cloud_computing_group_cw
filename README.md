@@ -113,12 +113,3 @@ Detailed request/response examples:
 5. Reach upvote threshold (`>= 5`) and confirm `APPROVED`
 6. Verify record appears in search
 7. Verify stats include approved data
-
-See `Docs/workflow.md` for evidence commands.
-
-## 10. Next Phases
-
-- Frontend implementation (React)
-- Dockerfiles for all services
-- Kubernetes manifests (namespaces, deployments, services, ingress, PVC)
-- Azure deployment and evidence screenshots
