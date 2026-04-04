@@ -24,7 +24,7 @@ submission -> voting -> approval -> search -> stats
 ## 2. Repository Structure
 
 ```text
-
+.
 ├── frontend/
 │   └── README.md
 └── services/
@@ -42,33 +42,8 @@ submission -> voting -> approval -> search -> stats
 - npm 9+
 - PostgreSQL installed locally
 
-## 4. Database Setup
 
-Create DB:
-
-```bash
-psql -U postgres -h localhost -c "CREATE DATABASE cloud_salary;"
-```
-
-
-## 5. Configure Environment Files
-
-For each service, copy environment template:
-
-```bash
-cp services/identity/.env.example services/identity/.env
-cp services/salary-submission/.env.example services/salary-submission/.env
-cp services/vote/.env.example services/vote/.env
-cp services/search/.env.example services/search/.env
-cp services/stats/.env.example services/stats/.env
-cp services/bff/.env.example services/bff/.env
-```
-
-Set same `JWT_SECRET` in:
-- `services/identity/.env`
-- `services/bff/.env`
-
-## 6. Install Dependencies
+## 4. Install Dependencies
 
 ```bash
 npm install --prefix services/identity
@@ -79,7 +54,7 @@ npm install --prefix services/stats
 npm install --prefix services/bff
 ```
 
-## 7. Run Services (Local)
+## 5. Run Services (Local)
 
 Run each in a separate terminal:
 
@@ -92,7 +67,7 @@ npm start --prefix services/stats
 npm start --prefix services/bff
 ```
 
-## 8. Public API Endpoints (BFF)
+## 6. Public API Endpoints (BFF)
 
 - `POST /api/auth/signup`
 - `POST /api/auth/login`
@@ -101,10 +76,8 @@ npm start --prefix services/bff
 - `GET /api/search`
 - `GET /api/stats`
 
-Detailed request/response examples:
-- see `Docs/api-documentation.md`
 
-## 9. Minimum Vertical Slice Test
+## 7. Minimum Vertical Slice Test
 
 1. Submit salary (anonymous)
 2. Confirm DB row status is `PENDING`
@@ -113,3 +86,4 @@ Detailed request/response examples:
 5. Reach upvote threshold (`>= 5`) and confirm `APPROVED`
 6. Verify record appears in search
 7. Verify stats include approved data
+
