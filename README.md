@@ -24,7 +24,6 @@ submission -> voting -> approval -> search -> stats
 ## 2. Repository Structure
 
 ```text
-.
 
 ├── frontend/
 │   └── README.md
@@ -51,13 +50,6 @@ Create DB:
 psql -U postgres -h localhost -c "CREATE DATABASE cloud_salary;"
 ```
 
-Apply schema scripts in order:
-
-```bash
-psql -U postgres -h localhost -d cloud_salary -f "Docs/SQL Files/001_create_schemas.sql"
-psql -U postgres -h localhost -d cloud_salary -f "Docs/SQL Files/002_create_tables.sql"
-psql -U postgres -h localhost -d cloud_salary -f "Docs/SQL Files/003_create_indexes.sql"
-```
 
 ## 5. Configure Environment Files
 
