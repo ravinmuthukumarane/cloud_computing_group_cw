@@ -387,3 +387,64 @@ Example:
 IDENTITY_SERVICE_URL=http://identity:5001
 SALARY_SERVICE_URL=http://salary-submission:5002
 
+
+Docker Compose run commands
+---------------------------
+
+A docker-compose.yml file exists at the project root.
+
+It builds and runs:
+
+postgres
+identity
+salary-submission
+vote
+search
+stats
+bff
+
+Start all containers with build:
+
+sudo docker compose up -d --build
+
+Check running Compose services:
+
+sudo docker compose ps
+
+Check all containers:
+
+sudo docker ps
+
+Health checks:
+
+curl http://localhost:5001/health
+curl http://localhost:5002/health
+curl http://localhost:5003/health
+curl http://localhost:5004/health
+curl http://localhost:5005/health
+curl http://localhost:5050/health
+
+View logs:
+
+sudo docker compose logs
+
+View logs for one service:
+
+sudo docker compose logs bff
+sudo docker compose logs postgres
+
+Stop all Compose containers:
+
+sudo docker compose down
+
+Stop all Compose containers and remove the Compose PostgreSQL volume:
+
+sudo docker compose down -v
+
+Warning: docker compose down -v deletes the Compose database volume.
+
+If existing standalone containers conflict with Compose container names or ports,
+remove them first:
+
+sudo docker stop cloud-salary-postgres bff-service identity-service salary-submission-service vote-service search-service stats-service
+sudo docker rm cloud-salary-postgres bff-service identity-service salary-submission-service vote-service search-service stats-service
