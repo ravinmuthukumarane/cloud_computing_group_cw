@@ -216,6 +216,111 @@ sudo docker stop salary-submission-service
 sudo docker rm salary-submission-service
 
 
+Vote service
+------------
+
+Vote service port:
+
+5003
+
+Build image:
+
+sudo docker build -t vote-service:1.0.0 services/vote
+
+Run vote container while PostgreSQL is running on the VM host:
+
+sudo docker run -d \
+  --name vote-service \
+  -p 5003:5003 \
+  --env-file services/vote/.env \
+  -e DB_HOST=host.docker.internal \
+  --add-host=host.docker.internal:host-gateway \
+  vote-service:1.0.0
+
+Check vote health:
+
+curl http://localhost:5003/health
+
+Expected response:
+
+{"status":"ok","service":"vote"}
+
+Stop and remove vote container:
+
+sudo docker stop vote-service
+sudo docker rm vote-service
+
+
+Search service
+--------------
+
+Search service port:
+
+5004
+
+Build image:
+
+sudo docker build -t search-service:1.0.0 services/search
+
+Run search container while PostgreSQL is running on the VM host:
+
+sudo docker run -d \
+  --name search-service \
+  -p 5004:5004 \
+  --env-file services/search/.env \
+  -e DB_HOST=host.docker.internal \
+  --add-host=host.docker.internal:host-gateway \
+  search-service:1.0.0
+
+Check search health:
+
+curl http://localhost:5004/health
+
+Expected response:
+
+{"status":"ok","service":"search"}
+
+Stop and remove search container:
+
+sudo docker stop search-service
+sudo docker rm search-service
+
+
+Stats service
+-------------
+
+Stats service port:
+
+5005
+
+Build image:
+
+sudo docker build -t stats-service:1.0.0 services/stats
+
+Run stats container while PostgreSQL is running on the VM host:
+
+sudo docker run -d \
+  --name stats-service \
+  -p 5005:5005 \
+  --env-file services/stats/.env \
+  -e DB_HOST=host.docker.internal \
+  --add-host=host.docker.internal:host-gateway \
+  stats-service:1.0.0
+
+Check stats health:
+
+curl http://localhost:5005/health
+
+Expected response:
+
+{"status":"ok","service":"stats"}
+
+Stop and remove stats container:
+
+sudo docker stop stats-service
+sudo docker rm stats-service
+
+
 Check all running containers
 ----------------------------
 
@@ -227,6 +332,9 @@ cloud-salary-postgres
 bff-service
 identity-service
 salary-submission-service
+vote-service
+search-service
+stats-service
 
 
 Docker Hub push commands
