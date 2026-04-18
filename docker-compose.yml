@@ -1,0 +1,118 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cloud-salary-postgres
+    environment:
+      POSTGRES_DB: cloud_salary
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "65610"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - "./Docs/SQL Files:/docker-entrypoint-initdb.d:ro"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cloud_salary"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  identity:
+    build:
+      context: ./services/identity
+    image: identity-service:1.0.0
+    container_name: identity-service
+    env_file:
+      - ./services/identity/.env
+    environment:
+      DB_HOST: postgres
+    ports:
+      - "5001:5001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  salary-submission:
+    build:
+      context: ./services/salary-submission
+    image: salary-submission-service:1.0.0
+    container_name: salary-submission-service
+    env_file:
+      - ./services/salary-submission/.env
+    environment:
+      DB_HOST: postgres
+    ports:
+      - "5002:5002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  vote:
+    build:
+      context: ./services/vote
+    image: vote-service:1.0.0
+    container_name: vote-service
+    env_file:
+      - ./services/vote/.env
+    environment:
+      DB_HOST: postgres
+    ports:
+      - "5003:5003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  search:
+    build:
+      context: ./services/search
+    image: search-service:1.0.0
+    container_name: search-service
+    env_file:
+      - ./services/search/.env
+    environment:
+      DB_HOST: postgres
+    ports:
+      - "5004:5004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  stats:
+    build:
+      context: ./services/stats
+    image: stats-service:1.0.0
+    container_name: stats-service
+    env_file:
+      - ./services/stats/.env
+    environment:
+      DB_HOST: postgres
+    ports:
+      - "5005:5005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  bff:
+    build:
+      context: ./services/bff
+    image: bff-service:1.0.0
+    container_name: bff-service
+    env_file:
+      - ./services/bff/.env
+    environment:
+      IDENTITY_SERVICE_URL: http://identity:5001
+      SALARY_SERVICE_URL: http://salary-submission:5002
+      VOTE_SERVICE_URL: http://vote:5003
+      SEARCH_SERVICE_URL: http://search:5004
+      STATS_SERVICE_URL: http://stats:5005
+    ports:
+      - "5050:5050"
+    depends_on:
+      - identity
+      - salary-submission
+      - vote
+      - search
+      - stats
+
+volumes:
+  postgres-data:
