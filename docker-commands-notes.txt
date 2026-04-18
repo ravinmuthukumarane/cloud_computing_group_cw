@@ -370,35 +370,6 @@ Push salary submission:
 
 sudo docker push YOUR_DOCKERHUB_USERNAME/salary-submission-service:1.0.0
 
-Tag vote:
-
-sudo docker tag vote-service:1.0.0 YOUR_DOCKERHUB_USERNAME/vote-service:1.0.0
-
-Push vote:
-
-sudo docker push YOUR_DOCKERHUB_USERNAME/vote-service:1.0.0
-
-Tag search:
-
-sudo docker tag search-service:1.0.0 YOUR_DOCKERHUB_USERNAME/search-service:1.0.0
-
-Push search:
-
-sudo docker push YOUR_DOCKERHUB_USERNAME/search-service:1.0.0
-
-Tag stats:
-
-sudo docker tag stats-service:1.0.0 YOUR_DOCKERHUB_USERNAME/stats-service:1.0.0
-
-Push stats:
-
-sudo docker push YOUR_DOCKERHUB_USERNAME/stats-service:1.0.0
-
-If using a separate Docker config, for example the nipuniamarasinghe login:
-
-sudo env DOCKER_CONFIG=/home/ravinmuthukumarane/.docker-nipuniamarasinghe \
-  docker push nipuniamarasinghe/stats-service:1.0.0
-
 
 Docker Compose note for later
 -----------------------------
@@ -415,3 +386,4 @@ Example:
 
 IDENTITY_SERVICE_URL=http://identity:5001
 SALARY_SERVICE_URL=http://salary-submission:5002
+
