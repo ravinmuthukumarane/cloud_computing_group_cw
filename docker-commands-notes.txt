@@ -1,0 +1,417 @@
+Docker commands and notes used so far
+====================================
+
+Project path
+------------
+
+cd /home/ravinmuthukumarane/cloud_computing_group_cw
+
+
+Important Docker notes
+----------------------
+
+This Debian VM needs sudo for Docker commands because the current user does not
+have permission to access /var/run/docker.sock.
+
+Use:
+
+sudo docker ...
+
+Containers and images are different:
+
+docker ps        shows running containers
+docker ps -a     shows all containers
+docker images    shows local images
+
+docker stop      stops containers
+docker rm        removes containers
+docker rmi       removes images
+
+docker stop takes a container name or container ID, not an image tag.
+Example:
+
+sudo docker stop bff-service
+
+Not:
+
+sudo docker stop bff-service:latest
+
+
+Files created
+-------------
+
+services/bff/Dockerfile
+services/bff/.dockerignore
+
+services/identity/Dockerfile
+services/identity/.dockerignore
+
+services/salary-submission/Dockerfile
+services/salary-submission/.dockerignore
+
+
+BFF Dockerfile
+--------------
+
+The BFF service uses port 5050 from services/bff/.env.
+
+Build:
+
+sudo docker build -t bff-service:latest services/bff
+
+Tag as version 1.0.0:
+
+sudo docker tag bff-service:latest bff-service:1.0.0
+
+Optional: remove the local latest tag and keep only 1.0.0:
+
+sudo docker rmi bff-service:latest
+
+Run BFF:
+
+sudo docker run -d \
+  --name bff-service \
+  -p 5050:5050 \
+  --env-file services/bff/.env \
+  bff-service:1.0.0
+
+Check BFF health:
+
+curl http://localhost:5050/health
+
+Expected response:
+
+{"status":"ok","service":"bff"}
+
+Stop and remove BFF container:
+
+sudo docker stop bff-service
+sudo docker rm bff-service
+
+
+PostgreSQL official image
+-------------------------
+
+The identity service .env uses:
+
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=cloud_salary
+DB_USER=postgres
+DB_PASSWORD=65610
+
+Pull official PostgreSQL image:
+
+sudo docker pull postgres:16-alpine
+
+Create persistent volume:
+
+sudo docker volume create cloud_salary_pgdata
+
+Run PostgreSQL with SQL init files:
+
+sudo docker run -d \
+  --name cloud-salary-postgres \
+  -e POSTGRES_DB=cloud_salary \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=65610 \
+  -p 5432:5432 \
+  -v cloud_salary_pgdata:/var/lib/postgresql/data \
+  -v "$(pwd)/Docs/SQL Files:/docker-entrypoint-initdb.d:ro" \
+  postgres:16-alpine
+
+Check PostgreSQL is running:
+
+sudo docker ps
+
+Check PostgreSQL is accepting connections:
+
+sudo docker exec cloud-salary-postgres pg_isready -U postgres -d cloud_salary
+
+Open psql:
+
+sudo docker exec -it cloud-salary-postgres psql -U postgres -d cloud_salary
+
+Inside psql, check tables:
+
+\dt identity.*
+\dt salary.*
+\dt community.*
+
+Stop and remove PostgreSQL container:
+
+sudo docker stop cloud-salary-postgres
+sudo docker rm cloud-salary-postgres
+
+Note: removing the container does not remove the named volume.
+
+
+Identity service
+----------------
+
+Identity service port:
+
+5001
+
+Build image:
+
+sudo docker build -t identity-service:1.0.0 services/identity
+
+Run identity container while PostgreSQL is running on the VM host:
+
+sudo docker run -d \
+  --name identity-service \
+  -p 5001:5001 \
+  --env-file services/identity/.env \
+  -e DB_HOST=host.docker.internal \
+  --add-host=host.docker.internal:host-gateway \
+  identity-service:1.0.0
+
+Check identity health:
+
+curl http://localhost:5001/health
+
+Expected response:
+
+{"status":"ok","service":"identity"}
+
+Stop and remove identity container:
+
+sudo docker stop identity-service
+sudo docker rm identity-service
+
+
+Salary submission service
+-------------------------
+
+Salary submission service port:
+
+5002
+
+Build image:
+
+sudo docker build -t salary-submission-service:1.0.0 services/salary-submission
+
+Run salary submission container while PostgreSQL is running on the VM host:
+
+sudo docker run -d \
+  --name salary-submission-service \
+  -p 5002:5002 \
+  --env-file services/salary-submission/.env \
+  -e DB_HOST=host.docker.internal \
+  --add-host=host.docker.internal:host-gateway \
+  salary-submission-service:1.0.0
+
+Check salary submission health:
+
+curl http://localhost:5002/health
+
+Expected response:
+
+{"status":"ok","service":"salary-submission"}
+
+Stop and remove salary submission container:
+
+sudo docker stop salary-submission-service
+sudo docker rm salary-submission-service
+
+
+Vote service
+------------
+
+Vote service port:
+
+5003
+
+Build image:
+
+sudo docker build -t vote-service:1.0.0 services/vote
+
+Run vote container while PostgreSQL is running on the VM host:
+
+sudo docker run -d \
+  --name vote-service \
+  -p 5003:5003 \
+  --env-file services/vote/.env \
+  -e DB_HOST=host.docker.internal \
+  --add-host=host.docker.internal:host-gateway \
+  vote-service:1.0.0
+
+Check vote health:
+
+curl http://localhost:5003/health
+
+Expected response:
+
+{"status":"ok","service":"vote"}
+
+Stop and remove vote container:
+
+sudo docker stop vote-service
+sudo docker rm vote-service
+
+
+Search service
+--------------
+
+Search service port:
+
+5004
+
+Build image:
+
+sudo docker build -t search-service:1.0.0 services/search
+
+Run search container while PostgreSQL is running on the VM host:
+
+sudo docker run -d \
+  --name search-service \
+  -p 5004:5004 \
+  --env-file services/search/.env \
+  -e DB_HOST=host.docker.internal \
+  --add-host=host.docker.internal:host-gateway \
+  search-service:1.0.0
+
+Check search health:
+
+curl http://localhost:5004/health
+
+Expected response:
+
+{"status":"ok","service":"search"}
+
+Stop and remove search container:
+
+sudo docker stop search-service
+sudo docker rm search-service
+
+
+Stats service
+-------------
+
+Stats service port:
+
+5005
+
+Build image:
+
+sudo docker build -t stats-service:1.0.0 services/stats
+
+Run stats container while PostgreSQL is running on the VM host:
+
+sudo docker run -d \
+  --name stats-service \
+  -p 5005:5005 \
+  --env-file services/stats/.env \
+  -e DB_HOST=host.docker.internal \
+  --add-host=host.docker.internal:host-gateway \
+  stats-service:1.0.0
+
+Check stats health:
+
+curl http://localhost:5005/health
+
+Expected response:
+
+{"status":"ok","service":"stats"}
+
+Stop and remove stats container:
+
+sudo docker stop stats-service
+sudo docker rm stats-service
+
+
+Check all running containers
+----------------------------
+
+sudo docker ps
+
+Expected services after running everything:
+
+cloud-salary-postgres
+bff-service
+identity-service
+salary-submission-service
+vote-service
+search-service
+stats-service
+
+
+Docker Hub push commands
+------------------------
+
+Login:
+
+sudo docker login
+
+Replace YOUR_DOCKERHUB_USERNAME with your Docker Hub username.
+
+Tag BFF:
+
+sudo docker tag bff-service:1.0.0 YOUR_DOCKERHUB_USERNAME/bff-service:1.0.0
+
+Push BFF:
+
+sudo docker push YOUR_DOCKERHUB_USERNAME/bff-service:1.0.0
+
+Tag identity:
+
+sudo docker tag identity-service:1.0.0 YOUR_DOCKERHUB_USERNAME/identity-service:1.0.0
+
+Push identity:
+
+sudo docker push YOUR_DOCKERHUB_USERNAME/identity-service:1.0.0
+
+Tag salary submission:
+
+sudo docker tag salary-submission-service:1.0.0 YOUR_DOCKERHUB_USERNAME/salary-submission-service:1.0.0
+
+Push salary submission:
+
+sudo docker push YOUR_DOCKERHUB_USERNAME/salary-submission-service:1.0.0
+
+Tag vote:
+
+sudo docker tag vote-service:1.0.0 YOUR_DOCKERHUB_USERNAME/vote-service:1.0.0
+
+Push vote:
+
+sudo docker push YOUR_DOCKERHUB_USERNAME/vote-service:1.0.0
+
+Tag search:
+
+sudo docker tag search-service:1.0.0 YOUR_DOCKERHUB_USERNAME/search-service:1.0.0
+
+Push search:
+
+sudo docker push YOUR_DOCKERHUB_USERNAME/search-service:1.0.0
+
+Tag stats:
+
+sudo docker tag stats-service:1.0.0 YOUR_DOCKERHUB_USERNAME/stats-service:1.0.0
+
+Push stats:
+
+sudo docker push YOUR_DOCKERHUB_USERNAME/stats-service:1.0.0
+
+If using a separate Docker config, for example the nipuniamarasinghe login:
+
+sudo env DOCKER_CONFIG=/home/ravinmuthukumarane/.docker-nipuniamarasinghe \
+  docker push nipuniamarasinghe/stats-service:1.0.0
+
+
+Docker Compose note for later
+-----------------------------
+
+When services run inside Docker Compose, do not use DB_HOST=localhost in service
+.env files. Inside a container, localhost means that same container.
+
+Use the Compose service name instead, for example:
+
+DB_HOST=postgres
+
+BFF upstream URLs should also use Compose service names instead of localhost.
+Example:
+
+IDENTITY_SERVICE_URL=http://identity:5001
+SALARY_SERVICE_URL=http://salary-submission:5002

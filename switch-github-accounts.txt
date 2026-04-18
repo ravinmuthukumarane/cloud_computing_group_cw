@@ -1,0 +1,53 @@
+Switch GitHub accounts for this repo
+====================================
+
+Current accounts set up on this server:
+
+1. ravinmuthukumarane
+   Email: ravinmuthukumarane@gmail.com
+   SSH alias: github-ravin
+
+2. bunnyv97
+   Email: nipuni.20240618@iit.ac.lk
+   SSH alias: github-bunnyv97
+
+
+Use ravinmuthukumarane for this repo
+------------------------------------
+
+git config user.name ravinmuthukumarane
+git config user.email ravinmuthukumarane@gmail.com
+git remote set-url origin git@github-ravin:ravinmuthukumarane/cloud_computing_group_cw.git
+
+
+Use bunnyv97 for this repo
+--------------------------
+
+git config user.name bunnyv97
+git config user.email nipuni.20240618@iit.ac.lk
+git remote set-url origin git@github-bunnyv97:bunnyv97/cloud_computing_group_cw.git
+
+
+Check which account this repo is using
+--------------------------------------
+
+git config user.name
+git config user.email
+git remote -v
+
+
+Test GitHub SSH login
+---------------------
+
+ssh -T git@github-ravin
+ssh -T git@github-bunnyv97
+
+
+Normal commit flow
+------------------
+
+git status
+git add .
+git commit -m "your commit message"
+git push
+
