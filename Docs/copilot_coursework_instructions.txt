@@ -398,7 +398,7 @@ Recommended initial local setup on Mac:
 
 Example local ports:
 - frontend: 3000
-- bff: 5000
+- bff: 5050
 - identity: 5001
 - salary-submission: 5002
 - vote: 5003
