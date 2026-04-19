@@ -1,0 +1,791 @@
+Azure Pipeline preparation - Docker work summary
+================================================
+
+Repository
+----------
+
+Local repo path:
+
+/home/ravinmuthukumarane/cloud_computing_group_cw
+
+Project:
+
+Cloud Salary Transparency System
+
+Main backend services:
+
+1. bff
+2. identity
+3. salary-submission
+4. vote
+5. search
+6. stats
+7. postgres database
+
+
+Current goal
+------------
+
+We prepared the project so that each backend service can be:
+
+1. Built as a Docker image.
+2. Run as a Docker container.
+3. Tagged with version 1.0.0.
+4. Pushed to Docker Hub.
+5. Run together with Docker Compose.
+6. Later automated through an Azure Pipeline.
+
+
+Important VM note
+-----------------
+
+This work was done on a Debian VM.
+
+Docker commands need sudo on this VM because the current Linux user does not
+have permission to access the Docker socket:
+
+/var/run/docker.sock
+
+Use:
+
+sudo docker ...
+
+Without sudo, Docker commands fail with a permission error.
+
+Examples:
+
+sudo docker ps
+sudo docker images
+sudo docker build ...
+sudo docker compose up ...
+
+
+Container vs image reminder
+---------------------------
+
+Images are build artifacts.
+Containers are running or stopped instances of images.
+
+Useful commands:
+
+sudo docker images
+sudo docker ps
+sudo docker ps -a
+
+Remove a container:
+
+sudo docker rm CONTAINER_NAME
+
+Remove an image:
+
+sudo docker rmi IMAGE_NAME:TAG
+
+Stop a container:
+
+sudo docker stop CONTAINER_NAME
+
+docker stop does not take image tags.
+
+Correct:
+
+sudo docker stop bff-service
+
+Incorrect:
+
+sudo docker stop bff-service:1.0.0
+
+
+Docker Hub accounts
+-------------------
+
+Two Docker Hub accounts were noted on this VM.
+
+1. ravinmuthukumarane
+
+   Default Docker config folder:
+
+   ~/.docker
+
+   This is the normal/default Docker config location.
+
+   Login:
+
+   docker login -u ravinmuthukumarane
+
+   Example image namespace:
+
+   ravinmuthukumarane/bff-service:1.0.0
+
+2. nipuniamarasinghe
+
+   Separate Docker config folder:
+
+   ~/.docker-nipuniamarasinghe
+
+   Login:
+
+   DOCKER_CONFIG=~/.docker-nipuniamarasinghe docker login -u nipuniamarasinghe
+
+   Example image namespace:
+
+   nipuniamarasinghe/bff-service:1.0.0
+
+
+Important Docker Hub + sudo note
+--------------------------------
+
+The Docker Hub login for nipuniamarasinghe was stored in:
+
+/home/ravinmuthukumarane/.docker-nipuniamarasinghe/config.json
+
+Because Docker commands require sudo on this VM, a normal command like this can
+fail during push:
+
+sudo docker push nipuniamarasinghe/search-service:1.0.0
+
+It can fail because sudo uses root's Docker config, not the custom user config.
+
+Use this instead:
+
+sudo env DOCKER_CONFIG=/home/ravinmuthukumarane/.docker-nipuniamarasinghe \
+  docker push nipuniamarasinghe/search-service:1.0.0
+
+The same pattern applies for all pushes to the nipuniamarasinghe Docker Hub
+account.
+
+
+Dockerfiles created
+-------------------
+
+Dockerfiles were created for all backend Node services:
+
+services/bff/Dockerfile
+services/identity/Dockerfile
+services/salary-submission/Dockerfile
+services/vote/Dockerfile
+services/search/Dockerfile
+services/stats/Dockerfile
+
+.dockerignore files were also created:
+
+services/bff/.dockerignore
+services/identity/.dockerignore
+services/salary-submission/.dockerignore
+services/vote/.dockerignore
+services/search/.dockerignore
+services/stats/.dockerignore
+
+
+Dockerfile pattern
+------------------
+
+Most services use this pattern:
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+COPY src ./src
+
+USER node
+
+EXPOSE SERVICE_PORT
+
+CMD ["npm", "start"]
+
+The BFF Dockerfile currently uses the same Node Alpine base and production npm
+install, but does not yet include USER node or npm cache clean:
+
+services/bff/Dockerfile
+
+This still works. It can be aligned later if desired.
+
+
+Why node:20-alpine was used
+---------------------------
+
+The Debian VM is the host operating system.
+
+The Docker image still needs its own filesystem and runtime. For Node services,
+the image needs Node.js and npm inside the container.
+
+node:20-alpine was used because it is an official Node image and is smaller than
+full Debian-based Node images.
+
+FROM scratch was discussed but not used because these services are Node.js apps.
+FROM scratch is not suitable unless a fully static binary is being copied in,
+which is usually for Go/Rust/C apps, not Node.
+
+
+Service ports
+-------------
+
+BFF:
+
+PORT=5050
+Image: bff-service:1.0.0
+Container name: bff-service
+Dockerfile: services/bff/Dockerfile
+
+Identity:
+
+PORT=5001
+Image: identity-service:1.0.0
+Container name: identity-service
+Dockerfile: services/identity/Dockerfile
+
+Salary submission:
+
+PORT=5002
+Image: salary-submission-service:1.0.0
+Container name: salary-submission-service
+Dockerfile: services/salary-submission/Dockerfile
+
+Vote:
+
+PORT=5003
+Image: vote-service:1.0.0
+Container name: vote-service
+Dockerfile: services/vote/Dockerfile
+
+Search:
+
+PORT=5004
+Image: search-service:1.0.0
+Container name: search-service
+Dockerfile: services/search/Dockerfile
+
+Stats:
+
+PORT=5005
+Image: stats-service:1.0.0
+Container name: stats-service
+Dockerfile: services/stats/Dockerfile
+
+PostgreSQL:
+
+PORT=5432
+Image: postgres:16-alpine
+Container name: cloud-salary-postgres
+
+
+PostgreSQL official image
+-------------------------
+
+The official PostgreSQL image used:
+
+postgres:16-alpine
+
+The local database configuration used by the services:
+
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=cloud_salary
+DB_USER=postgres
+DB_PASSWORD=65610
+
+When running services inside Docker Compose, DB_HOST is overridden to:
+
+DB_HOST=postgres
+
+This is required because localhost inside a container means the same container,
+not the host machine and not another container.
+
+
+SQL initialization files
+------------------------
+
+These SQL files are required to initialize the database:
+
+Docs/SQL Files/001_create_schemas.sql
+Docs/SQL Files/002_create_tables.sql
+Docs/SQL Files/003_create_indexes.sql
+
+They are mounted into the official Postgres container at:
+
+/docker-entrypoint-initdb.d
+
+In docker-compose.yml:
+
+"./Docs/SQL Files:/docker-entrypoint-initdb.d:ro"
+
+The Postgres image automatically runs files in /docker-entrypoint-initdb.d only
+when the database directory is empty.
+
+This means SQL init scripts run only on first database initialization.
+
+To force the scripts to run again with Docker Compose, remove the Compose volume:
+
+sudo docker compose down -v
+
+Warning:
+
+docker compose down -v deletes the Compose PostgreSQL database volume.
+
+
+PostgreSQL standalone commands used before Compose
+--------------------------------------------------
+
+Pull official Postgres image:
+
+sudo docker pull postgres:16-alpine
+
+Create standalone database volume:
+
+sudo docker volume create cloud_salary_pgdata
+
+Run standalone Postgres:
+
+sudo docker run -d \
+  --name cloud-salary-postgres \
+  -e POSTGRES_DB=cloud_salary \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=65610 \
+  -p 5432:5432 \
+  -v cloud_salary_pgdata:/var/lib/postgresql/data \
+  -v "$(pwd)/Docs/SQL Files:/docker-entrypoint-initdb.d:ro" \
+  postgres:16-alpine
+
+Check Postgres:
+
+sudo docker exec cloud-salary-postgres pg_isready -U postgres -d cloud_salary
+
+Open psql:
+
+sudo docker exec -it cloud-salary-postgres psql -U postgres -d cloud_salary
+
+Inside psql:
+
+\dn
+\dt identity.*
+\dt salary.*
+\dt community.*
+\di identity.*
+\di salary.*
+\di community.*
+
+
+Individual image build commands
+-------------------------------
+
+BFF:
+
+sudo docker build -t bff-service:1.0.0 services/bff
+
+Identity:
+
+sudo docker build -t identity-service:1.0.0 services/identity
+
+Salary submission:
+
+sudo docker build -t salary-submission-service:1.0.0 services/salary-submission
+
+Vote:
+
+sudo docker build -t vote-service:1.0.0 services/vote
+
+Search:
+
+sudo docker build -t search-service:1.0.0 services/search
+
+Stats:
+
+sudo docker build -t stats-service:1.0.0 services/stats
+
+
+Individual run commands used before Compose
+-------------------------------------------
+
+BFF:
+
+sudo docker run -d \
+  --name bff-service \
+  -p 5050:5050 \
+  --env-file services/bff/.env \
+  bff-service:1.0.0
+
+Identity:
+
+sudo docker run -d \
+  --name identity-service \
+  -p 5001:5001 \
+  --env-file services/identity/.env \
+  -e DB_HOST=host.docker.internal \
+  --add-host=host.docker.internal:host-gateway \
+  identity-service:1.0.0
+
+Salary submission:
+
+sudo docker run -d \
+  --name salary-submission-service \
+  -p 5002:5002 \
+  --env-file services/salary-submission/.env \
+  -e DB_HOST=host.docker.internal \
+  --add-host=host.docker.internal:host-gateway \
+  salary-submission-service:1.0.0
+
+Vote:
+
+sudo docker run -d \
+  --name vote-service \
+  -p 5003:5003 \
+  --env-file services/vote/.env \
+  -e DB_HOST=host.docker.internal \
+  --add-host=host.docker.internal:host-gateway \
+  vote-service:1.0.0
+
+Search:
+
+sudo docker run -d \
+  --name search-service \
+  -p 5004:5004 \
+  --env-file services/search/.env \
+  -e DB_HOST=host.docker.internal \
+  --add-host=host.docker.internal:host-gateway \
+  search-service:1.0.0
+
+Stats:
+
+sudo docker run -d \
+  --name stats-service \
+  -p 5005:5005 \
+  --env-file services/stats/.env \
+  -e DB_HOST=host.docker.internal \
+  --add-host=host.docker.internal:host-gateway \
+  stats-service:1.0.0
+
+
+Health check commands
+---------------------
+
+BFF:
+
+curl http://localhost:5050/health
+
+Identity:
+
+curl http://localhost:5001/health
+
+Salary submission:
+
+curl http://localhost:5002/health
+
+Vote:
+
+curl http://localhost:5003/health
+
+Search:
+
+curl http://localhost:5004/health
+
+Stats:
+
+curl http://localhost:5005/health
+
+Expected examples:
+
+{"status":"ok","service":"bff"}
+{"status":"ok","service":"identity"}
+{"status":"ok","service":"salary-submission"}
+{"status":"ok","service":"vote"}
+{"status":"ok","service":"search"}
+{"status":"ok","service":"stats"}
+
+
+Docker Hub tag and push commands
+--------------------------------
+
+Using Docker Hub account nipuniamarasinghe:
+
+BFF:
+
+sudo docker tag bff-service:1.0.0 nipuniamarasinghe/bff-service:1.0.0
+sudo env DOCKER_CONFIG=/home/ravinmuthukumarane/.docker-nipuniamarasinghe \
+  docker push nipuniamarasinghe/bff-service:1.0.0
+
+Identity:
+
+sudo docker tag identity-service:1.0.0 nipuniamarasinghe/identity-service:1.0.0
+sudo env DOCKER_CONFIG=/home/ravinmuthukumarane/.docker-nipuniamarasinghe \
+  docker push nipuniamarasinghe/identity-service:1.0.0
+
+Salary submission:
+
+sudo docker tag salary-submission-service:1.0.0 nipuniamarasinghe/salary-submission-service:1.0.0
+sudo env DOCKER_CONFIG=/home/ravinmuthukumarane/.docker-nipuniamarasinghe \
+  docker push nipuniamarasinghe/salary-submission-service:1.0.0
+
+Vote:
+
+sudo docker tag vote-service:1.0.0 nipuniamarasinghe/vote-service:1.0.0
+sudo env DOCKER_CONFIG=/home/ravinmuthukumarane/.docker-nipuniamarasinghe \
+  docker push nipuniamarasinghe/vote-service:1.0.0
+
+Search:
+
+sudo docker tag search-service:1.0.0 nipuniamarasinghe/search-service:1.0.0
+sudo env DOCKER_CONFIG=/home/ravinmuthukumarane/.docker-nipuniamarasinghe \
+  docker push nipuniamarasinghe/search-service:1.0.0
+
+Stats:
+
+sudo docker tag stats-service:1.0.0 nipuniamarasinghe/stats-service:1.0.0
+sudo env DOCKER_CONFIG=/home/ravinmuthukumarane/.docker-nipuniamarasinghe \
+  docker push nipuniamarasinghe/stats-service:1.0.0
+
+
+Docker Hub repository note
+--------------------------
+
+If push fails with:
+
+push access denied, repository does not exist or may require authorization
+
+Then either:
+
+1. The Docker CLI is using the wrong Docker config/login.
+2. The repository does not exist under that Docker Hub namespace.
+3. The account does not have permission to push to that namespace.
+
+For nipuniamarasinghe, use:
+
+sudo env DOCKER_CONFIG=/home/ravinmuthukumarane/.docker-nipuniamarasinghe \
+  docker push nipuniamarasinghe/IMAGE_NAME:1.0.0
+
+If it still fails, create the repository manually in Docker Hub under the
+nipuniamarasinghe account.
+
+
+Docker Compose file
+-------------------
+
+Created:
+
+docker-compose.yml
+
+Compose services:
+
+postgres
+identity
+salary-submission
+vote
+search
+stats
+bff
+
+Compose uses:
+
+postgres:16-alpine
+
+for the database.
+
+Compose builds local service images using each service Dockerfile:
+
+./services/identity
+./services/salary-submission
+./services/vote
+./services/search
+./services/stats
+./services/bff
+
+Compose maps host ports:
+
+5432 -> postgres
+5001 -> identity
+5002 -> salary-submission
+5003 -> vote
+5004 -> search
+5005 -> stats
+5050 -> bff
+
+Compose overrides service-to-service config:
+
+Identity DB_HOST:
+
+DB_HOST=postgres
+
+Salary submission DB_HOST:
+
+DB_HOST=postgres
+
+Vote DB_HOST:
+
+DB_HOST=postgres
+
+Search DB_HOST:
+
+DB_HOST=postgres
+
+Stats DB_HOST:
+
+DB_HOST=postgres
+
+BFF upstream URLs:
+
+IDENTITY_SERVICE_URL=http://identity:5001
+SALARY_SERVICE_URL=http://salary-submission:5002
+VOTE_SERVICE_URL=http://vote:5003
+SEARCH_SERVICE_URL=http://search:5004
+STATS_SERVICE_URL=http://stats:5005
+
+
+Cleaning old standalone containers before Compose
+-------------------------------------------------
+
+Before running Compose fresh, stop and remove standalone containers:
+
+sudo docker stop vote-service stats-service search-service identity-service bff-service cloud-salary-postgres
+
+sudo docker rm vote-service stats-service search-service identity-service bff-service cloud-salary-postgres
+
+If some containers do not exist, Docker may print "No such container". That is
+fine.
+
+
+Run Docker Compose in foreground
+--------------------------------
+
+To see all initialization logs, do not use -d.
+
+Run:
+
+sudo docker compose up --build
+
+This shows:
+
+1. Image build output.
+2. Postgres startup.
+3. SQL initialization logs from /docker-entrypoint-initdb.d.
+4. Node service startup logs.
+5. Any connection or configuration errors.
+
+Stop foreground Compose:
+
+Ctrl + C
+
+Then clean up containers:
+
+sudo docker compose down
+
+Reset Compose database and rerun SQL init scripts:
+
+sudo docker compose down -v
+sudo docker compose up --build
+
+
+Run Docker Compose in detached mode
+-----------------------------------
+
+Use this when logs do not need to stay attached:
+
+sudo docker compose up -d --build
+
+Check services:
+
+sudo docker compose ps
+
+Show logs:
+
+sudo docker compose logs
+
+Show logs for one service:
+
+sudo docker compose logs bff
+sudo docker compose logs postgres
+
+Stop:
+
+sudo docker compose down
+
+
+Azure Pipeline notes for next step
+----------------------------------
+
+For Azure Pipeline, the likely next file is:
+
+azure-pipelines.yml
+
+Common CI/CD tasks will be:
+
+1. Checkout repo.
+2. Build Docker images for each service.
+3. Tag images with a stable version, commit SHA, or build ID.
+4. Login to Docker Hub using pipeline secrets.
+5. Push images to Docker Hub.
+
+Recommended Docker Hub secrets for Azure Pipelines:
+
+DOCKERHUB_USERNAME
+DOCKERHUB_TOKEN
+
+Use a Docker Hub access token instead of a real account password.
+
+Do not store Docker Hub passwords or tokens directly in repo files.
+
+The target Docker Hub namespace currently being used in manual commands is:
+
+nipuniamarasinghe
+
+Possible image names for pipeline:
+
+nipuniamarasinghe/bff-service
+nipuniamarasinghe/identity-service
+nipuniamarasinghe/salary-submission-service
+nipuniamarasinghe/vote-service
+nipuniamarasinghe/search-service
+nipuniamarasinghe/stats-service
+
+Recommended tags:
+
+1. 1.0.0
+2. latest
+3. Azure build ID, for example $(Build.BuildId)
+4. Git commit SHA, for example $(Build.SourceVersion)
+
+For coursework, using 1.0.0 is simple and consistent with the manual work done.
+
+
+Files that should not be baked into images
+------------------------------------------
+
+.env files are excluded by .dockerignore.
+
+Runtime environment values are provided by:
+
+1. docker run --env-file
+2. docker-compose.yml env_file and environment
+3. Later, Azure Pipeline variables or deployment environment variables
+
+Do not bake secrets into Docker images.
+
+
+Current created/changed Docker-related files
+--------------------------------------------
+
+docker-compose.yml
+docker-commands-notes.txt
+azure-pipeline-docker-work-summary.txt
+
+services/bff/Dockerfile
+services/bff/.dockerignore
+
+services/identity/Dockerfile
+services/identity/.dockerignore
+
+services/salary-submission/Dockerfile
+services/salary-submission/.dockerignore
+
+services/vote/Dockerfile
+services/vote/.dockerignore
+
+services/search/Dockerfile
+services/search/.dockerignore
+
+services/stats/Dockerfile
+services/stats/.dockerignore
+
