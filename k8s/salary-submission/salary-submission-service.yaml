@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: salary-submission-service
+  namespace: app
+spec:
+  type: ClusterIP
+  selector:
+    app: salary-submission
+  ports:
+    - name: http
+      port: 5002
+      targetPort: 5002

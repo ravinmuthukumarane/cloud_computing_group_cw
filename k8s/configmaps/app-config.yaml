@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: app
+data:
+  DB_HOST: postgres.data.svc.cluster.local
+  DB_PORT: "5432"
+  DB_NAME: cloud_salary
+  DB_USER: postgres
+  JWT_EXPIRES_IN: 24h
+  APPROVAL_UPVOTE_THRESHOLD: "5"
+  IDENTITY_SERVICE_URL: http://identity-service:5001
+  SALARY_SERVICE_URL: http://salary-submission-service:5002
+  VOTE_SERVICE_URL: http://vote-service:5003
+  SEARCH_SERVICE_URL: http://search-service:5004
+  STATS_SERVICE_URL: http://stats-service:5005
