@@ -1,0 +1,842 @@
+Kubernetes k3d deployment notes
+===============================
+
+Project
+-------
+
+Cloud Salary Transparency System
+
+Repository path:
+
+/home/ravinmuthukumarane/cloud_computing_group_cw
+
+Deployment target:
+
+Single-node Kubernetes cluster using k3d on the Debian/Azure VM.
+
+Final access URL format:
+
+http://VM_PUBLIC_IP:8080/
+
+Local VM test URL:
+
+http://localhost:8080/
+
+
+Important working rule followed
+-------------------------------
+
+Commands were run manually in the terminal so output could be captured for the
+coursework report.
+
+Codex generated files and provided commands, but Kubernetes/Docker/k3d commands
+were run manually by the user.
+
+
+Docker Hub image ownership used
+-------------------------------
+
+Images from nipuniamarasinghe:
+
+nipuniamarasinghe/vote-service:1.0.0
+nipuniamarasinghe/search-service:1.0.0
+nipuniamarasinghe/stats-service:1.0.0
+nipuniamarasinghe/frontend-service:1.0.1
+
+Images from ravinmuthukumarane:
+
+ravinmuthukumarane/bff-service:1.0.0
+ravinmuthukumarane/identity-service:1.0.0
+ravinmuthukumarane/salary-submission-service:1.0.0
+
+
+Kubernetes namespaces
+---------------------
+
+app:
+
+frontend
+bff
+identity
+salary-submission
+vote
+search
+stats
+
+data:
+
+postgres
+postgres persistent volume claim
+
+
+Kubernetes files created
+------------------------
+
+Namespaces:
+
+k8s/namespaces/app-namespace.yaml
+k8s/namespaces/data-namespace.yaml
+
+ConfigMaps:
+
+k8s/configmaps/app-config.yaml
+k8s/postgres/postgres-init-configmap.yaml
+
+Secrets:
+
+k8s/secrets/app-secrets.yaml
+k8s/secrets/postgres-secret.yaml
+k8s/secrets/app-db-secret.yaml
+
+PostgreSQL:
+
+k8s/postgres/postgres-pvc.yaml
+k8s/postgres/postgres-deployment.yaml
+k8s/postgres/postgres-service.yaml
+
+Backend services:
+
+k8s/identity/identity-deployment.yaml
+k8s/identity/identity-service.yaml
+
+k8s/salary-submission/salary-submission-deployment.yaml
+k8s/salary-submission/salary-submission-service.yaml
+
+k8s/vote/vote-deployment.yaml
+k8s/vote/vote-service.yaml
+
+k8s/search/search-deployment.yaml
+k8s/search/search-service.yaml
+
+k8s/stats/stats-deployment.yaml
+k8s/stats/stats-service.yaml
+
+k8s/bff/bff-deployment.yaml
+k8s/bff/bff-service.yaml
+
+Frontend:
+
+k8s/frontend/frontend-deployment.yaml
+k8s/frontend/frontend-service.yaml
+
+Ingress:
+
+k8s/ingress/app-ingress.yaml
+
+Helper docs:
+
+k8s/README-k3d-deploy.txt
+k8s/manual-verification-checklist.txt
+
+
+Final routing design
+--------------------
+
+Browser -> Azure VM public IP port 8080 -> k3d load balancer -> NGINX Ingress
+
+Ingress rules:
+
+/      -> frontend-service:80
+/api   -> bff-service:5050
+
+BFF routes to internal services:
+
+identity-service:5001
+salary-submission-service:5002
+vote-service:5003
+search-service:5004
+stats-service:5005
+
+PostgreSQL is internal only:
+
+postgres.data.svc.cluster.local:5432
+
+
+Correct successful command path
+===============================
+
+Step 1 - Create k3d cluster without Traefik
+-------------------------------------------
+
+The first cluster had Traefik enabled by default, which conflicted with NGINX
+Ingress. The working cluster was created with Traefik disabled.
+
+Command:
+
+k3d cluster create cloud-salary-cluster \
+  --servers 1 \
+  --agents 0 \
+  --port "8080:80@loadbalancer" \
+  --port "8443:443@loadbalancer" \
+  --k3s-arg "--disable=traefik@server:0"
+
+What it does:
+
+Creates a single-node k3d cluster.
+Maps VM port 8080 to the Kubernetes load balancer HTTP port 80.
+Maps VM port 8443 to the Kubernetes load balancer HTTPS port 443.
+Disables Traefik so NGINX Ingress owns ingress traffic.
+
+Verify:
+
+sudo kubectl get nodes
+
+Expected:
+
+k3d-cloud-salary-cluster-server-0 should be Ready.
+
+
+Step 2 - Install NGINX Ingress
+------------------------------
+
+Command:
+
+sudo kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+
+Verify:
+
+sudo kubectl get pods -n ingress-nginx
+
+Expected:
+
+ingress-nginx-controller should be 1/1 Running.
+
+Useful check:
+
+sudo kubectl get pods -A | grep -E 'traefik|ingress|nginx'
+
+Expected final state:
+
+NGINX ingress pods should exist.
+Traefik pod should not be running.
+
+
+Step 3 - Create namespaces
+--------------------------
+
+Commands:
+
+sudo kubectl apply -f k8s/namespaces/app-namespace.yaml
+sudo kubectl apply -f k8s/namespaces/data-namespace.yaml
+
+Verify:
+
+sudo kubectl get namespaces
+
+Expected:
+
+app
+data
+ingress-nginx
+kube-system
+
+
+Step 4 - Apply ConfigMaps and Secrets
+-------------------------------------
+
+Commands:
+
+sudo kubectl apply -f k8s/configmaps/app-config.yaml
+sudo kubectl apply -f k8s/secrets/app-secrets.yaml
+sudo kubectl apply -f k8s/secrets/app-db-secret.yaml
+sudo kubectl apply -f k8s/secrets/postgres-secret.yaml
+
+Verify:
+
+sudo kubectl get configmaps -n app
+sudo kubectl get secrets -n app
+sudo kubectl get secrets -n data
+
+Expected:
+
+app namespace:
+
+app-config
+app-secrets
+app-db-secret
+
+data namespace:
+
+postgres-secret
+
+
+Step 5 - Deploy PostgreSQL
+--------------------------
+
+Commands:
+
+sudo kubectl apply -f k8s/postgres/postgres-init-configmap.yaml
+sudo kubectl apply -f k8s/postgres/postgres-pvc.yaml
+sudo kubectl apply -f k8s/postgres/postgres-deployment.yaml
+sudo kubectl apply -f k8s/postgres/postgres-service.yaml
+
+Verify:
+
+sudo kubectl get pods -n data
+sudo kubectl get pvc -n data
+sudo kubectl get svc -n data
+
+Expected:
+
+postgres pod should be 1/1 Running.
+postgres-pvc should be Bound.
+postgres service should be ClusterIP on 5432.
+
+
+Step 6 - Verify database initialization
+---------------------------------------
+
+Schemas:
+
+sudo kubectl exec -n data deployment/postgres -- \
+  psql -U postgres -d cloud_salary -c "\dn"
+
+Expected schemas:
+
+identity
+salary
+community
+
+Tables:
+
+sudo kubectl exec -n data deployment/postgres -- \
+  psql -U postgres -d cloud_salary -c "\dt identity.*"
+
+sudo kubectl exec -n data deployment/postgres -- \
+  psql -U postgres -d cloud_salary -c "\dt salary.*"
+
+sudo kubectl exec -n data deployment/postgres -- \
+  psql -U postgres -d cloud_salary -c "\dt community.*"
+
+Expected tables:
+
+identity.users
+salary.submissions
+community.votes
+community.reports
+
+Indexes:
+
+sudo kubectl exec -n data deployment/postgres -- \
+  psql -U postgres -d cloud_salary -c "\di identity.*"
+
+sudo kubectl exec -n data deployment/postgres -- \
+  psql -U postgres -d cloud_salary -c "\di salary.*"
+
+sudo kubectl exec -n data deployment/postgres -- \
+  psql -U postgres -d cloud_salary -c "\di community.*"
+
+
+Step 7 - Deploy internal backend services
+-----------------------------------------
+
+Commands:
+
+sudo kubectl apply -f k8s/identity/
+sudo kubectl apply -f k8s/salary-submission/
+sudo kubectl apply -f k8s/vote/
+sudo kubectl apply -f k8s/search/
+sudo kubectl apply -f k8s/stats/
+
+Verify:
+
+sudo kubectl get pods -n app
+sudo kubectl get svc -n app
+
+Expected:
+
+identity should be 1/1 Running.
+salary-submission should be 1/1 Running.
+vote should be 1/1 Running.
+search should be 1/1 Running.
+stats should be 1/1 Running.
+
+Log checks:
+
+sudo kubectl logs -n app deployment/identity
+sudo kubectl logs -n app deployment/salary-submission
+sudo kubectl logs -n app deployment/vote
+sudo kubectl logs -n app deployment/search
+sudo kubectl logs -n app deployment/stats
+
+Expected logs:
+
+identity service listening on port 5001
+salary-submission service listening on port 5002
+vote service listening on port 5003
+search service listening on port 5004
+stats service listening on port 5005
+
+
+Step 8 - Deploy BFF
+-------------------
+
+Command:
+
+sudo kubectl apply -f k8s/bff/
+
+Verify:
+
+sudo kubectl get pods -n app
+sudo kubectl get svc -n app
+sudo kubectl logs -n app deployment/bff
+
+Expected:
+
+bff should be 1/1 Running.
+bff-service should be ClusterIP on 5050.
+Logs should include:
+
+bff service listening on port 5050
+
+
+Step 9 - Deploy frontend
+------------------------
+
+The frontend image used for Kubernetes must be built with:
+
+VITE_API_BASE_URL=/api
+
+Final Kubernetes frontend image:
+
+nipuniamarasinghe/frontend-service:1.0.1
+
+Command:
+
+sudo kubectl apply -f k8s/frontend/
+
+Verify:
+
+sudo kubectl get pods -n app -l app=frontend -o wide
+sudo kubectl logs -n app deployment/frontend
+
+Expected:
+
+frontend should be 1/1 Running.
+NGINX startup logs should appear.
+
+
+Step 10 - Apply ingress
+-----------------------
+
+Command:
+
+sudo kubectl apply -f k8s/ingress/app-ingress.yaml
+
+Verify:
+
+sudo kubectl get ingress -n app
+sudo kubectl describe ingress app-ingress -n app
+
+Expected rules:
+
+/api -> bff-service:5050
+/    -> frontend-service:80
+
+
+Step 11 - Test ingress locally on the VM
+----------------------------------------
+
+Frontend:
+
+curl http://localhost:8080/
+
+Expected:
+
+HTML from the React frontend.
+
+Search API:
+
+curl http://localhost:8080/api/search
+
+Expected with empty database:
+
+{"results":[]}
+
+Stats API:
+
+curl http://localhost:8080/api/stats
+
+Expected with empty approved records:
+
+{"count":0,"average":null,"median":null,"p90":null,"currency":"MULTI"}
+
+
+Step 12 - Test externally
+-------------------------
+
+Azure firewall / NSG inbound rule was opened for TCP port 8080.
+
+Browser URL:
+
+http://VM_PUBLIC_IP:8080/
+
+Expected:
+
+Frontend loads successfully from outside the VM.
+
+
+Frontend image correction path
+==============================
+
+Problem:
+
+The first frontend image was built with:
+
+VITE_API_BASE_URL=http://localhost:5050/api
+
+This worked for Docker Compose but was wrong for Kubernetes ingress, because
+browser traffic should go through:
+
+/api
+
+Correct rebuild:
+
+sudo docker build --no-cache \
+  --build-arg VITE_API_BASE_URL=/api \
+  -t frontend-service:k8s-1.0.0 \
+  frontend
+
+Then tagged as 1.0.1:
+
+sudo docker tag frontend-service:k8s-1.0.0 frontend-service:1.0.1
+sudo docker tag frontend-service:1.0.1 nipuniamarasinghe/frontend-service:1.0.1
+
+Push:
+
+sudo env DOCKER_CONFIG=/home/ravinmuthukumarane/.docker-nipuniamarasinghe \
+  docker push nipuniamarasinghe/frontend-service:1.0.1
+
+Kubernetes manifest was updated:
+
+k8s/frontend/frontend-deployment.yaml
+
+Final image:
+
+nipuniamarasinghe/frontend-service:1.0.1
+
+Also kept:
+
+imagePullPolicy: Always
+
+Verify frontend JS:
+
+curl -s http://localhost:8080/ | grep assets
+
+Then use the JS filename shown in the HTML:
+
+curl -s http://localhost:8080/assets/index-REPLACE_WITH_REAL_NAME.js | grep -o "http://localhost:5050/api\|/api" | head
+
+Expected:
+
+/api
+
+
+Mistakes and corrections
+========================
+
+Mistake 1 - Traefik conflicted with NGINX Ingress
+------------------------------------------------
+
+What happened:
+
+The first k3d cluster was created without disabling Traefik.
+k3s installs Traefik by default.
+
+Symptoms:
+
+curl http://localhost:8080/
+
+returned:
+
+404 page not found
+
+Checking controllers showed:
+
+traefik pod Running
+svclb-traefik Running
+ingress-nginx-controller Running
+svclb-ingress-nginx-controller Pending
+
+Diagnosis:
+
+Port 8080 traffic was reaching Traefik, not NGINX Ingress.
+
+Correction:
+
+The cluster was recreated with Traefik disabled:
+
+k3d cluster create cloud-salary-cluster \
+  --servers 1 \
+  --agents 0 \
+  --port "8080:80@loadbalancer" \
+  --port "8443:443@loadbalancer" \
+  --k3s-arg "--disable=traefik@server:0"
+
+Result:
+
+NGINX Ingress handled traffic correctly.
+curl http://localhost:8080/ returned frontend HTML.
+
+
+Mistake 2 - App pods tried to read a Secret from the data namespace
+-------------------------------------------------------------------
+
+What happened:
+
+The identity Deployment originally referenced postgres-secret for DB_PASSWORD.
+postgres-secret existed only in the data namespace.
+The identity pod runs in the app namespace.
+
+Symptom:
+
+identity pod status:
+
+CreateContainerConfigError
+
+Diagnosis:
+
+Kubernetes Secrets are namespace-scoped.
+Pods in app cannot read Secrets from data.
+
+Correction:
+
+Created:
+
+k8s/secrets/app-db-secret.yaml
+
+with:
+
+namespace: app
+
+and key:
+
+DB_PASSWORD
+
+Updated application deployments to use:
+
+app-db-secret
+
+Affected deployments:
+
+identity
+salary-submission
+vote
+search
+stats
+
+Result:
+
+identity pod became 1/1 Running.
+Other backend services also ran successfully.
+
+
+Mistake 3 - Frontend was built with Docker Compose API URL
+---------------------------------------------------------
+
+What happened:
+
+The frontend image was first built with:
+
+VITE_API_BASE_URL=http://localhost:5050/api
+
+This is suitable for local Docker Compose when the browser talks to the BFF on
+host port 5050.
+
+In Kubernetes ingress, frontend should call:
+
+/api
+
+because the same ingress routes /api to BFF.
+
+Symptom:
+
+Checking the built JS showed:
+
+http://localhost:5050/api
+
+Command used:
+
+curl -s http://localhost:8080/assets/index-DWr9rItW.js | grep -o "http://localhost:5050/api\|/api" | head
+
+Correction:
+
+Rebuilt frontend with:
+
+sudo docker build --no-cache \
+  --build-arg VITE_API_BASE_URL=/api \
+  -t frontend-service:k8s-1.0.0 \
+  frontend
+
+Then pushed as:
+
+nipuniamarasinghe/frontend-service:1.0.1
+
+Updated:
+
+k8s/frontend/frontend-deployment.yaml
+
+Result:
+
+Frontend pod rolled out successfully using image:
+
+nipuniamarasinghe/frontend-service:1.0.1
+
+
+Mistake 4 - Docker cache reused the old frontend build
+------------------------------------------------------
+
+What happened:
+
+The frontend was rebuilt with a different build arg, but Docker reused the cached
+Vite build layer:
+
+CACHED [build 8/8] RUN npm run build
+
+Symptom:
+
+The JS bundle still contained:
+
+http://localhost:5050/api
+
+Correction:
+
+Used:
+
+--no-cache
+
+and updated the Dockerfile build step to print the build arg:
+
+RUN echo "Building frontend with VITE_API_BASE_URL=$VITE_API_BASE_URL" && npm run build
+
+Result:
+
+Build output showed:
+
+Building frontend with VITE_API_BASE_URL=/api
+
+
+Mistake 5 - Reusing the same image tag made Kubernetes pull/cache confusing
+---------------------------------------------------------------------------
+
+What happened:
+
+The frontend Deployment was restarted while still using an old or unavailable
+image tag.
+
+Symptoms:
+
+Rollout stuck at:
+
+Waiting for deployment "frontend" rollout to finish: 1 old replicas are pending termination...
+
+Frontend pod showed:
+
+ErrImagePull
+
+Deployment showed image:
+
+nipuniamarasinghe/frontend-service:k8s-1.0.0
+
+Correction:
+
+Used a new image tag:
+
+nipuniamarasinghe/frontend-service:1.0.1
+
+Updated:
+
+k8s/frontend/frontend-deployment.yaml
+
+with:
+
+imagePullPolicy: Always
+
+Result:
+
+Frontend rollout completed successfully.
+
+
+Mistake 6 - Tried to map port 80 to 8080 using iptables
+-------------------------------------------------------
+
+What happened:
+
+An attempt was made to access the app without :8080 by redirecting host port 80
+to 8080 using iptables.
+
+Rules added:
+
+sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8080
+sudo iptables -t nat -A OUTPUT -p tcp -o lo --dport 80 -j REDIRECT --to-port 8080
+
+Symptom:
+
+Traffic became unreliable and neither access path worked cleanly.
+
+Diagnosis:
+
+Docker already had NAT rules mapping:
+
+8080 -> k3d load balancer port 80
+
+Adding extra redirect rules caused messy host-level NAT behavior.
+
+Correction:
+
+Decision was made to forget direct port 80 mapping and continue with the working
+port:
+
+http://VM_PUBLIC_IP:8080/
+
+Recommended future clean approach if direct port 80 is required:
+
+Recreate k3d with:
+
+--port "80:80@loadbalancer"
+
+instead of using iptables.
+
+
+Final working state
+===================
+
+Cluster:
+
+k3d single-node cluster
+Traefik disabled
+NGINX Ingress installed
+
+Access:
+
+http://VM_PUBLIC_IP:8080/
+
+Working checks:
+
+curl http://localhost:8080/
+curl http://localhost:8080/api/search
+curl http://localhost:8080/api/stats
+
+Observed successful API outputs:
+
+{"results":[]}
+{"count":0,"average":null,"median":null,"p90":null,"currency":"MULTI"}
+
+All app pods reached Running:
+
+bff
+frontend
+identity
+salary-submission
+search
+stats
+vote
+
+Data pod reached Running:
+
+postgres
+
+PVC reached Bound:
+
+postgres-pvc
+

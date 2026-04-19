@@ -1,0 +1,152 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pr: none
+
+variables:
+  imageTag: '$(Build.BuildId)'
+  ravinDockerHubNamespace: 'ravinmuthukumarane'
+  nipuniDockerHubNamespace: 'nipuniamarasinghe'
+  selfHostedPoolName: 'cloud-cw-vm-pool'
+
+stages:
+  - stage: BuildAndPush
+    displayName: Build and push Docker images
+    jobs:
+      - job: BuildImages
+        displayName: Build service images
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+
+          - task: Docker@2
+            displayName: Login to Docker Hub - ravinmuthukumarane
+            inputs:
+              command: login
+              containerRegistry: dockerhub-ravinmuthukumarane
+
+          - task: Docker@2
+            displayName: Login to Docker Hub - nipuniamarasinghe
+            inputs:
+              command: login
+              containerRegistry: dockerhub-nipuniamarasinghe
+
+          - script: |
+              set -e
+
+              echo "Building images with tag: $(imageTag)"
+
+              docker build -t $(ravinDockerHubNamespace)/bff-service:$(imageTag) services/bff
+              docker build -t $(ravinDockerHubNamespace)/identity-service:$(imageTag) services/identity
+              docker build -t $(ravinDockerHubNamespace)/salary-submission-service:$(imageTag) services/salary-submission
+
+              docker build -t $(nipuniDockerHubNamespace)/vote-service:$(imageTag) services/vote
+              docker build -t $(nipuniDockerHubNamespace)/search-service:$(imageTag) services/search
+              docker build -t $(nipuniDockerHubNamespace)/stats-service:$(imageTag) services/stats
+              docker build --build-arg VITE_API_BASE_URL=/api -t $(nipuniDockerHubNamespace)/frontend-service:$(imageTag) frontend
+
+              docker push $(ravinDockerHubNamespace)/bff-service:$(imageTag)
+              docker push $(ravinDockerHubNamespace)/identity-service:$(imageTag)
+              docker push $(ravinDockerHubNamespace)/salary-submission-service:$(imageTag)
+
+              docker push $(nipuniDockerHubNamespace)/vote-service:$(imageTag)
+              docker push $(nipuniDockerHubNamespace)/search-service:$(imageTag)
+              docker push $(nipuniDockerHubNamespace)/stats-service:$(imageTag)
+              docker push $(nipuniDockerHubNamespace)/frontend-service:$(imageTag)
+            displayName: Build and push all images
+
+  - stage: DeployToK3d
+    displayName: Deploy to k3d Kubernetes cluster
+    dependsOn: BuildAndPush
+    condition: succeeded()
+    jobs:
+      - job: Deploy
+        displayName: Apply Kubernetes manifests
+        pool:
+          name: $(selfHostedPoolName)
+        steps:
+          - checkout: self
+
+          - script: |
+              set -e
+
+              echo "Using Kubernetes context:"
+              kubectl config current-context
+
+              echo "Applying namespaces"
+              kubectl apply -f k8s/namespaces/app-namespace.yaml
+              kubectl apply -f k8s/namespaces/data-namespace.yaml
+
+              echo "Applying non-sensitive config"
+              kubectl apply -f k8s/configmaps/app-config.yaml
+
+              echo "Creating/updating Kubernetes Secrets from Azure Pipeline secret variables"
+              kubectl create secret generic app-secrets \
+                --namespace app \
+                --from-literal=JWT_SECRET="$JWT_SECRET" \
+                --dry-run=client \
+                -o yaml | kubectl apply -f -
+
+              kubectl create secret generic app-db-secret \
+                --namespace app \
+                --from-literal=DB_PASSWORD="$POSTGRES_PASSWORD" \
+                --dry-run=client \
+                -o yaml | kubectl apply -f -
+
+              kubectl create secret generic postgres-secret \
+                --namespace data \
+                --from-literal=POSTGRES_DB=cloud_salary \
+                --from-literal=POSTGRES_USER=postgres \
+                --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+                --dry-run=client \
+                -o yaml | kubectl apply -f -
+
+              echo "Applying PostgreSQL manifests"
+              kubectl apply -f k8s/postgres/postgres-init-configmap.yaml
+              kubectl apply -f k8s/postgres/postgres-pvc.yaml
+              kubectl apply -f k8s/postgres/postgres-deployment.yaml
+              kubectl apply -f k8s/postgres/postgres-service.yaml
+
+              echo "Applying application manifests"
+              kubectl apply -f k8s/identity/
+              kubectl apply -f k8s/salary-submission/
+              kubectl apply -f k8s/vote/
+              kubectl apply -f k8s/search/
+              kubectl apply -f k8s/stats/
+              kubectl apply -f k8s/bff/
+              kubectl apply -f k8s/frontend/
+              kubectl apply -f k8s/ingress/app-ingress.yaml
+
+              echo "Updating Deployments to the image tag built by this pipeline"
+              kubectl set image deployment/bff bff=$(ravinDockerHubNamespace)/bff-service:$(imageTag) -n app
+              kubectl set image deployment/identity identity=$(ravinDockerHubNamespace)/identity-service:$(imageTag) -n app
+              kubectl set image deployment/salary-submission salary-submission=$(ravinDockerHubNamespace)/salary-submission-service:$(imageTag) -n app
+
+              kubectl set image deployment/vote vote=$(nipuniDockerHubNamespace)/vote-service:$(imageTag) -n app
+              kubectl set image deployment/search search=$(nipuniDockerHubNamespace)/search-service:$(imageTag) -n app
+              kubectl set image deployment/stats stats=$(nipuniDockerHubNamespace)/stats-service:$(imageTag) -n app
+              kubectl set image deployment/frontend frontend=$(nipuniDockerHubNamespace)/frontend-service:$(imageTag) -n app
+
+              echo "Waiting for rollouts"
+              kubectl rollout status deployment/postgres -n data
+              kubectl rollout status deployment/identity -n app
+              kubectl rollout status deployment/salary-submission -n app
+              kubectl rollout status deployment/vote -n app
+              kubectl rollout status deployment/search -n app
+              kubectl rollout status deployment/stats -n app
+              kubectl rollout status deployment/bff -n app
+              kubectl rollout status deployment/frontend -n app
+
+              echo "Final resource summary"
+              kubectl get pods -n data
+              kubectl get pvc -n data
+              kubectl get pods -n app
+              kubectl get services -n app
+              kubectl get ingress -n app
+            displayName: Deploy manifests and update image tags
+            env:
+              JWT_SECRET: $(JWT_SECRET)
+              POSTGRES_PASSWORD: $(POSTGRES_PASSWORD)

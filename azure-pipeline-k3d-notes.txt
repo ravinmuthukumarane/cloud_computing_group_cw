@@ -1,0 +1,209 @@
+Azure Pipeline notes for k3d deployment
+=======================================
+
+Purpose
+-------
+
+This file explains the Azure Pipeline setup added in:
+
+azure-pipelines.yml
+
+The pipeline has two stages:
+
+1. BuildAndPush
+2. DeployToK3d
+
+
+Important design decision
+-------------------------
+
+The k3d Kubernetes cluster runs on the Azure/Debian VM.
+
+A Microsoft-hosted Azure Pipelines agent cannot directly access that local k3d
+cluster.
+
+Therefore, the deploy stage expects a self-hosted Azure DevOps agent running on
+the same VM as k3d.
+
+
+Pipeline file
+-------------
+
+Created:
+
+azure-pipelines.yml
+
+
+Docker Hub image ownership
+--------------------------
+
+The pipeline builds and pushes these images:
+
+ravinmuthukumarane/bff-service:$(Build.BuildId)
+ravinmuthukumarane/identity-service:$(Build.BuildId)
+ravinmuthukumarane/salary-submission-service:$(Build.BuildId)
+
+nipuniamarasinghe/vote-service:$(Build.BuildId)
+nipuniamarasinghe/search-service:$(Build.BuildId)
+nipuniamarasinghe/stats-service:$(Build.BuildId)
+nipuniamarasinghe/frontend-service:$(Build.BuildId)
+
+The frontend is built with:
+
+VITE_API_BASE_URL=/api
+
+This is required for Kubernetes ingress because the browser should call:
+
+/api
+
+not:
+
+http://localhost:5050/api
+
+
+Required Azure DevOps Docker service connections
+------------------------------------------------
+
+Create two Docker registry service connections in Azure DevOps:
+
+1. dockerhub-ravinmuthukumarane
+
+   Docker Hub account:
+
+   ravinmuthukumarane
+
+2. dockerhub-nipuniamarasinghe
+
+   Docker Hub account:
+
+   nipuniamarasinghe
+
+The names must match the values used in azure-pipelines.yml, or the YAML must be
+edited to match the actual service connection names.
+
+
+Required Azure Pipeline secret variables
+----------------------------------------
+
+Create these pipeline variables and mark them secret:
+
+JWT_SECRET
+POSTGRES_PASSWORD
+
+For local coursework testing, the values previously used were:
+
+JWT_SECRET=coursework-local-secret
+POSTGRES_PASSWORD=65610
+
+Do not hardcode real production secrets in YAML.
+
+
+Required self-hosted agent pool
+-------------------------------
+
+The deploy stage uses:
+
+cloud-cw-vm-pool
+
+This is configured in azure-pipelines.yml:
+
+selfHostedPoolName: 'cloud-cw-vm-pool'
+
+Create a self-hosted Azure DevOps agent on the same VM where k3d is running, and
+place it in an agent pool with this name.
+
+If your pool has a different name, update:
+
+selfHostedPoolName
+
+in azure-pipelines.yml.
+
+
+Required VM tools for the self-hosted agent
+-------------------------------------------
+
+The VM/self-hosted agent needs:
+
+docker
+kubectl
+k3d cluster already running
+kubectl configured to access the k3d cluster
+
+The pipeline does not create the k3d cluster.
+The pipeline deploys to the existing cluster.
+
+
+Expected k3d cluster setup
+--------------------------
+
+The cluster should be created manually with Traefik disabled:
+
+k3d cluster create cloud-salary-cluster \
+  --servers 1 \
+  --agents 0 \
+  --port "8080:80@loadbalancer" \
+  --port "8443:443@loadbalancer" \
+  --k3s-arg "--disable=traefik@server:0"
+
+NGINX Ingress should be installed manually:
+
+sudo kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+
+
+What the deploy stage does
+--------------------------
+
+The deploy stage:
+
+1. Applies app and data namespaces.
+2. Applies app ConfigMap.
+3. Creates/updates app-secrets from Azure Pipeline secret variables.
+4. Creates/updates app-db-secret from Azure Pipeline secret variables.
+5. Creates/updates postgres-secret from Azure Pipeline secret variables.
+6. Applies PostgreSQL ConfigMap, PVC, Deployment, and Service.
+7. Applies all app Deployments and Services.
+8. Applies ingress.
+9. Updates each Deployment image to the tag built by the current pipeline run.
+10. Waits for all rollouts.
+11. Prints pod, service, PVC, and ingress summaries.
+
+
+PostgreSQL init note
+--------------------
+
+The SQL init ConfigMap is applied by the pipeline:
+
+k8s/postgres/postgres-init-configmap.yaml
+
+PostgreSQL only runs files in:
+
+/docker-entrypoint-initdb.d
+
+when the database directory is empty.
+
+If the PVC already has data, the init SQL scripts will not rerun.
+
+To reset the database manually:
+
+sudo kubectl delete pvc postgres-pvc -n data
+
+Warning:
+
+Deleting the PVC deletes the database data.
+
+
+After pipeline succeeds
+-----------------------
+
+Check from the VM:
+
+curl http://localhost:8080/
+curl http://localhost:8080/api/search
+curl http://localhost:8080/api/stats
+
+External access:
+
+http://VM_PUBLIC_IP:8080/
+
+Azure firewall / NSG must allow inbound TCP port 8080.
+

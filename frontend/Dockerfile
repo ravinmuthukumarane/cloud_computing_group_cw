@@ -12,7 +12,7 @@ COPY index.html ./
 COPY vite.config.js ./
 COPY src ./src
 
-RUN npm run build
+RUN echo "Building frontend with VITE_API_BASE_URL=$VITE_API_BASE_URL" && npm run build
 
 FROM nginx:1.27-alpine
 

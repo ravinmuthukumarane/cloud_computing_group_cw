@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-sql
+  namespace: data
+data:
+  001_create_schemas.sql: |
+    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+    CREATE SCHEMA IF NOT EXISTS identity;
+    CREATE SCHEMA IF NOT EXISTS salary;
+    CREATE SCHEMA IF NOT EXISTS community;
+  002_create_tables.sql: |
+    CREATE TABLE IF NOT EXISTS identity.users (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email VARCHAR(255) NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS salary.submissions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        country VARCHAR(100) NOT NULL,
+        company VARCHAR(255) NOT NULL,
+        role VARCHAR(255) NOT NULL,
+        experience_level VARCHAR(50) NOT NULL,
+        salary_amount NUMERIC(12,2) NOT NULL CHECK (salary_amount > 0),
+        currency VARCHAR(10) NOT NULL,
+        anonymize BOOLEAN NOT NULL DEFAULT TRUE,
+        status VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+            CHECK (status IN ('PENDING', 'APPROVED')),
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS community.votes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        submission_id UUID NOT NULL,
+        user_id UUID NOT NULL,
+        vote_type VARCHAR(20) NOT NULL
+            CHECK (vote_type IN ('UPVOTE', 'DOWNVOTE')),
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        CONSTRAINT fk_votes_submission
+            FOREIGN KEY (submission_id)
+            REFERENCES salary.submissions(id)
+            ON DELETE CASCADE,
+        CONSTRAINT fk_votes_user
+            FOREIGN KEY (user_id)
+            REFERENCES identity.users(id)
+            ON DELETE CASCADE,
+        CONSTRAINT uq_votes_submission_user UNIQUE (submission_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS community.reports (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        submission_id UUID NOT NULL,
+        user_id UUID NOT NULL,
+        reason TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        CONSTRAINT fk_reports_submission
+            FOREIGN KEY (submission_id)
+            REFERENCES salary.submissions(id)
+            ON DELETE CASCADE,
+        CONSTRAINT fk_reports_user
+            FOREIGN KEY (user_id)
+            REFERENCES identity.users(id)
+            ON DELETE CASCADE
+    );
+  003_create_indexes.sql: |
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
+        ON identity.users(email);
+
+    CREATE INDEX IF NOT EXISTS idx_salary_submissions_status
+        ON salary.submissions(status);
+
+    CREATE INDEX IF NOT EXISTS idx_salary_submissions_country
+        ON salary.submissions(country);
+
+    CREATE INDEX IF NOT EXISTS idx_salary_submissions_role
+        ON salary.submissions(role);
+
+    CREATE INDEX IF NOT EXISTS idx_salary_submissions_experience_level
+        ON salary.submissions(experience_level);
+
+    CREATE INDEX IF NOT EXISTS idx_salary_submissions_search
+        ON salary.submissions(country, role, experience_level);
+
+    CREATE INDEX IF NOT EXISTS idx_votes_submission_id
+        ON community.votes(submission_id);
+
+    CREATE INDEX IF NOT EXISTS idx_votes_user_id
+        ON community.votes(user_id);
+
+    CREATE INDEX IF NOT EXISTS idx_reports_submission_id
+        ON community.reports(submission_id);
+
+    CREATE INDEX IF NOT EXISTS idx_reports_user_id
+        ON community.reports(user_id);
