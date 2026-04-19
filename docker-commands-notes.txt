@@ -402,6 +402,7 @@ vote
 search
 stats
 bff
+frontend
 
 Start all containers with build:
 
@@ -423,6 +424,10 @@ curl http://localhost:5003/health
 curl http://localhost:5004/health
 curl http://localhost:5005/health
 curl http://localhost:5050/health
+
+Frontend:
+
+http://localhost:3000
 
 View logs:
 
@@ -446,5 +451,5 @@ Warning: docker compose down -v deletes the Compose database volume.
 If existing standalone containers conflict with Compose container names or ports,
 remove them first:
 
-sudo docker stop cloud-salary-postgres bff-service identity-service salary-submission-service vote-service search-service stats-service
-sudo docker rm cloud-salary-postgres bff-service identity-service salary-submission-service vote-service search-service stats-service
+sudo docker stop cloud-salary-postgres bff-service identity-service salary-submission-service vote-service search-service stats-service frontend-service
+sudo docker rm cloud-salary-postgres bff-service identity-service salary-submission-service vote-service search-service stats-service frontend-service

@@ -114,5 +114,17 @@ services:
       - search
       - stats
 
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:5050/api
+    image: frontend-service:1.0.0
+    container_name: frontend-service
+    ports:
+      - "3000:80"
+    depends_on:
+      - bff
+
 volumes:
   postgres-data:
