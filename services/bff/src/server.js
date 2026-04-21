@@ -35,6 +35,9 @@ function authMiddleware(req, res, next) {
 
   try {
     const payload = jwt.verify(token, JWT_SECRET);
+    if (!payload?.sub) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
     req.user = { id: payload.sub };
     return next();
   } catch (error) {
@@ -67,6 +70,17 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/salaries', async (req, res) => {
   try {
     const response = await axios.post(`${SALARY_SERVICE_URL}/submissions`, req.body);
+    return res.status(response.status).json(response.data);
+  } catch (error) {
+    return handleProxyError(error, res);
+  }
+});
+
+app.get('/api/submissions', async (req, res) => {
+  try {
+    const response = await axios.get(`${SALARY_SERVICE_URL}/submissions`, {
+      params: req.query,
+    });
     return res.status(response.status).json(response.data);
   } catch (error) {
     return handleProxyError(error, res);

@@ -200,12 +200,20 @@ body {
 }
 
 .post-badge {
-  background: #d8f3df;
-  color: #0c4a2e;
   border-radius: 999px;
   padding: 0.24rem 0.56rem;
   font-size: 0.75rem;
   font-weight: 700;
+}
+
+.post-badge.approved {
+  background: #d8f3df;
+  color: #0c4a2e;
+}
+
+.post-badge.pending {
+  background: #fff0c9;
+  color: #7a5800;
 }
 
 .post-meta {

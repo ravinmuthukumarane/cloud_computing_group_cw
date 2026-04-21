@@ -69,6 +69,76 @@ app.post('/submissions', async (req, res, next) => {
   }
 });
 
+app.get('/submissions', async (req, res, next) => {
+  try {
+    const filters = [];
+    const values = [];
+    let index = 1;
+
+    if (req.query.status) {
+      filters.push(`status = $${index++}`);
+      values.push(req.query.status);
+    }
+
+    if (req.query.country) {
+      filters.push(`country ILIKE $${index++}`);
+      values.push(req.query.country);
+    }
+
+    if (req.query.company) {
+      filters.push(`company ILIKE $${index++}`);
+      values.push(req.query.company);
+    }
+
+    if (req.query.role) {
+      filters.push(`role ILIKE $${index++}`);
+      values.push(req.query.role);
+    }
+
+    if (req.query.experienceLevel) {
+      filters.push(`experience_level ILIKE $${index++}`);
+      values.push(req.query.experienceLevel);
+    }
+
+    const whereClause = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
+
+    const result = await pool.query(
+      `SELECT id,
+              country,
+              CASE WHEN anonymize THEN 'Anonymous' ELSE company END AS company,
+              role,
+              experience_level,
+              salary_amount,
+              currency,
+              anonymize,
+              status,
+              created_at
+       FROM salary.submissions
+       ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT 100`,
+      values
+    );
+
+    return res.status(200).json({
+      results: result.rows.map((row) => ({
+        id: row.id,
+        country: row.country,
+        company: row.company,
+        role: row.role,
+        experienceLevel: row.experience_level,
+        salaryAmount: Number(row.salary_amount),
+        currency: row.currency,
+        anonymize: row.anonymize,
+        status: row.status,
+        createdAt: row.created_at,
+      })),
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 app.get('/submissions/:id', async (req, res, next) => {
   try {
     const result = await pool.query(

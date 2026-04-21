@@ -16,6 +16,9 @@ export default function Navbar({ activeTab, onTabChange, isAuthenticated, onOpen
         <button className={activeTab === 'submit' ? 'tab active' : 'tab'} onClick={() => onTabChange('submit')}>
           Submit Salary
         </button>
+        <button className={activeTab === 'review' ? 'tab active' : 'tab'} onClick={() => onTabChange('review')}>
+          Review / Vote
+        </button>
         <button className={activeTab === 'search' ? 'tab active' : 'tab'} onClick={() => onTabChange('search')}>
           Search
         </button>

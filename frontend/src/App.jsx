@@ -36,6 +36,12 @@ export default function App() {
     try {
       await action();
     } catch (error) {
+      if (error.message === 'Unauthorized') {
+        setToken('');
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+        setModalMode('login');
+        setStatusMessage('Your login session is invalid or expired. Please log in again to vote.');
+      }
       setErrorMessage(error.message);
     }
   };
@@ -58,6 +64,15 @@ export default function App() {
     const data = await callApi(`/search${query ? `?${query}` : ''}`);
     setPosts(data.results || []);
     setStatusMessage(`Loaded ${data.results.length} approved salary post(s).`);
+  };
+
+  const loadPendingPosts = async () => {
+    const query = buildSearchQuery();
+    const statusPrefix = 'status=PENDING';
+    const fullQuery = query ? `${statusPrefix}&${query}` : statusPrefix;
+    const data = await callApi(`/submissions?${fullQuery}`);
+    setPosts(data.results || []);
+    setStatusMessage(`Loaded ${data.results.length} pending salary submission(s) for review.`);
   };
 
   const loadStats = async () => {
@@ -103,9 +118,11 @@ export default function App() {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      setStatusMessage(`Salary submitted successfully and stored as ${data.status}.`);
-      setActiveTab('approved');
-      await loadApprovedPosts();
+      setStatusMessage(
+        `Salary submitted successfully and stored as ${data.status}. It is now waiting for community votes.`
+      );
+      setActiveTab('review');
+      await loadPendingPosts();
     });
   };
 
@@ -122,21 +139,66 @@ export default function App() {
       setStatusMessage(
         `Vote recorded. Submission is ${data.submissionStatus}. Community score is ${data.currentScore}.`
       );
+
+      if (activeTab === 'review') {
+        await loadPendingPosts();
+      }
+
+      if (activeTab === 'approved' || activeTab === 'search') {
+        await loadApprovedPosts();
+      }
     });
   };
 
   const promptLoginForVoting = () => {
-    setStatusMessage('Please log in to vote on salary posts.');
+    setStatusMessage('Please log in to vote on salary submissions.');
     setModalMode('login');
   };
 
   const renderFeed = () => (
     <>
-      <SearchFilters filters={filters} onChange={setFilter} onSearch={() => safelyRun(loadApprovedPosts)} />
+      <SearchFilters
+        filters={filters}
+        onChange={setFilter}
+        onSearch={() => safelyRun(loadApprovedPosts)}
+        title="Browse Approved Salaries"
+        buttonLabel="Load Approved"
+      />
 
       <section className="posts-feed">
         {posts.length === 0 ? (
           <div className="empty-state">No approved salary posts found for these filters.</div>
+        ) : (
+          posts.map((post) => (
+            <SalaryPostCard
+              key={post.id}
+              post={post}
+              canVote={isAuthenticated}
+              onVote={voteOnPost}
+              onRequireAuth={promptLoginForVoting}
+            />
+          ))
+        )}
+      </section>
+    </>
+  );
+
+  const renderReviewFeed = () => (
+    <>
+      <SearchFilters
+        filters={filters}
+        onChange={setFilter}
+        onSearch={() => safelyRun(loadPendingPosts)}
+        title="Review Pending Submissions"
+        buttonLabel="Load Pending"
+      />
+
+      <section className="posts-feed">
+        {posts.length === 0 ? (
+          <div className="empty-state">
+            No pending salary submissions found for these filters. New submissions stay here until the community
+            votes them to approval.
+          </div>
         ) : (
           posts.map((post) => (
             <SalaryPostCard
@@ -168,6 +230,8 @@ export default function App() {
 
         {activeTab === 'submit' ? <SubmitSalaryForm onSubmit={submitSalary} /> : null}
 
+        {activeTab === 'review' ? renderReviewFeed() : null}
+
         {activeTab === 'search' ? (
           <section className="search-page">
             <SearchFilters
@@ -175,6 +239,8 @@ export default function App() {
               filters={filters}
               onChange={setFilter}
               onSearch={() => safelyRun(loadApprovedPosts)}
+              title="Search Approved Salaries"
+              buttonLabel="Search Approved"
             />
             <section className="posts-feed">
               {posts.length === 0 ? (

@@ -15,7 +15,8 @@ spec:
     spec:
       containers:
         - name: bff
-          image: ravinmuthukumarane/bff-service:1.0.0
+          image: ravinmuthukumarane/bff-service:1.0.1
+          imagePullPolicy: Always
           ports:
             - containerPort: 5050
           env:

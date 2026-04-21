@@ -3,6 +3,8 @@ function formatMoney(amount, currency) {
 }
 
 export default function SalaryPostCard({ post, canVote, onVote, onRequireAuth }) {
+  const status = post.status || 'APPROVED';
+
   return (
     <article className="post-card">
       <div className="post-header">
@@ -12,7 +14,7 @@ export default function SalaryPostCard({ post, canVote, onVote, onRequireAuth })
             {post.company} · {post.country}
           </p>
         </div>
-        <span className="post-badge">APPROVED</span>
+        <span className={`post-badge ${status === 'PENDING' ? 'pending' : 'approved'}`}>{status}</span>
       </div>
 
       <div className="post-meta">

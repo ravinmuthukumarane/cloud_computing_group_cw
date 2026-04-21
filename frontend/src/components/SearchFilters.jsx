@@ -1,7 +1,14 @@
-export default function SearchFilters({ filters, onChange, onSearch, compact = false }) {
+export default function SearchFilters({
+  filters,
+  onChange,
+  onSearch,
+  compact = false,
+  title = 'Search Approved Salaries',
+  buttonLabel = 'Search',
+}) {
   return (
     <section className={compact ? 'filters compact' : 'filters'}>
-      <h2>Search Approved Salaries</h2>
+      <h2>{title}</h2>
       <div className="filter-grid">
         <input
           placeholder="Country"
@@ -25,7 +32,7 @@ export default function SearchFilters({ filters, onChange, onSearch, compact = f
         />
       </div>
       <button onClick={onSearch} className="primary-submit">
-        Search
+        {buttonLabel}
       </button>
     </section>
   );
