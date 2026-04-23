@@ -14,8 +14,8 @@ flowchart TB
     azure[Azure VM Public IP:8080]
     k3d[k3d Single-Node Kubernetes Cluster]
     ingress[NGINX Ingress Controller]
-    frontend[Frontend Service<br/>React served by NGINX]
-    bff[BFF Service]
+    frontend[Frontend Service<br/>Serves React UI and static assets]
+    bff[BFF Service<br/>Only browser API entry point]
     identity[Identity Service]
     salary[Salary Submission Service]
     vote[Vote Service]
@@ -26,8 +26,9 @@ flowchart TB
     user --> azure
     azure --> k3d
     k3d --> ingress
-    ingress -->|/| frontend
-    ingress -->|/api/*| bff
+    ingress -->|Browser requests / and /assets/*| frontend
+    user -. Frontend JS calls /api/* .-> ingress
+    ingress -->|Only /api/* routes here| bff
 
     bff --> identity
     bff --> salary
@@ -78,8 +79,8 @@ flowchart TB
         end
     end
 
-    nginx --> fsvc
-    nginx --> bffsvc
+    nginx -->|Path / and static assets| fsvc
+    nginx -->|Path /api/* only| bffsvc
 
     fsvc --> frontend
     bffsvc --> bff
@@ -110,15 +111,16 @@ flowchart LR
     firewall[Azure NSG / Firewall<br/>Allow TCP 8080]
     k3dlb[k3d Load Balancer<br/>Host 8080 -> Cluster 80]
     nginx[NGINX Ingress]
-    frontend[frontend-service:80]
-    bff[bff-service:5050]
+    frontend[frontend-service:80<br/>UI and static files]
+    bff[bff-service:5050<br/>Browser API entry point]
 
     browser -->|http://VM_PUBLIC_IP:8080| vm
     vm --> firewall
     firewall --> k3dlb
     k3dlb --> nginx
-    nginx -->|Path /| frontend
-    nginx -->|Path /api| bff
+    nginx -->|Path / and /assets/*| frontend
+    browser -. JavaScript fetch /api/* .-> nginx
+    nginx -->|Path /api/*| bff
 ```
 
 ---
@@ -545,4 +547,3 @@ flowchart TB
     evidence --> api
     evidence --> pipeline
 ```
-

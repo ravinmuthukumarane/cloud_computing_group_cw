@@ -9,7 +9,7 @@ data:
   DB_NAME: cloud_salary
   DB_USER: postgres
   JWT_EXPIRES_IN: 24h
-  APPROVAL_UPVOTE_THRESHOLD: "5"
+  APPROVAL_UPVOTE_THRESHOLD: "1"
   IDENTITY_SERVICE_URL: http://identity-service:5001
   SALARY_SERVICE_URL: http://salary-submission-service:5002
   VOTE_SERVICE_URL: http://vote-service:5003

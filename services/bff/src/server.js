@@ -89,8 +89,9 @@ app.get('/api/submissions', async (req, res) => {
 
 app.post('/api/votes', authMiddleware, async (req, res) => {
   try {
+    const submissionId = req.body.submissionId || req.body.id;
     const payload = {
-      submissionId: req.body.submissionId,
+      submissionId,
       voteType: req.body.voteType,
       userId: req.user.id,
     };

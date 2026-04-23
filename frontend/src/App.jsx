@@ -14,6 +14,7 @@ export default function App() {
   const [token, setToken] = useState(localStorage.getItem(AUTH_TOKEN_KEY) || '');
   const [modalMode, setModalMode] = useState(null);
   const [posts, setPosts] = useState([]);
+  const [votedSubmissionIds, setVotedSubmissionIds] = useState([]);
   const [stats, setStats] = useState(null);
   const [statusMessage, setStatusMessage] = useState('Welcome. Browse approved salary posts.');
   const [errorMessage, setErrorMessage] = useState('');
@@ -30,6 +31,12 @@ export default function App() {
   useEffect(() => {
     loadApprovedPosts();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'stats') {
+      safelyRun(loadStats);
+    }
+  }, [activeTab, filters.country, filters.company, filters.role, filters.experienceLevel]);
 
   const safelyRun = async (action) => {
     setErrorMessage('');
@@ -71,8 +78,9 @@ export default function App() {
     const statusPrefix = 'status=PENDING';
     const fullQuery = query ? `${statusPrefix}&${query}` : statusPrefix;
     const data = await callApi(`/submissions?${fullQuery}`);
-    setPosts(data.results || []);
-    setStatusMessage(`Loaded ${data.results.length} pending salary submission(s) for review.`);
+    const visibleResults = (data.results || []).filter((post) => !votedSubmissionIds.includes(post.id || post.submissionId));
+    setPosts(visibleResults);
+    setStatusMessage(`Loaded ${visibleResults.length} pending salary submission(s) for review.`);
   };
 
   const loadStats = async () => {
@@ -128,6 +136,10 @@ export default function App() {
 
   const voteOnPost = async (submissionId, voteType) => {
     await safelyRun(async () => {
+      if (!submissionId) {
+        throw new Error('This submission is missing an id and cannot be voted on yet.');
+      }
+
       const data = await callApi('/votes', {
         method: 'POST',
         headers: {
@@ -141,7 +153,11 @@ export default function App() {
       );
 
       if (activeTab === 'review') {
-        await loadPendingPosts();
+        setVotedSubmissionIds((current) => (current.includes(submissionId) ? current : [...current, submissionId]));
+        setPosts((current) => current.filter((post) => (post.id || post.submissionId) !== submissionId));
+        setStatusMessage(
+          `Vote recorded. Submission is ${data.submissionStatus}. It has been removed from your review list.`
+        );
       }
 
       if (activeTab === 'approved' || activeTab === 'search') {
@@ -173,9 +189,10 @@ export default function App() {
             <SalaryPostCard
               key={post.id}
               post={post}
-              canVote={isAuthenticated}
+              canVote={isAuthenticated && !votedSubmissionIds.includes(post.id || post.submissionId)}
               onVote={voteOnPost}
               onRequireAuth={promptLoginForVoting}
+              voteDisabledLabel="Voted"
             />
           ))
         )}
@@ -204,9 +221,10 @@ export default function App() {
             <SalaryPostCard
               key={post.id}
               post={post}
-              canVote={isAuthenticated}
+              canVote={isAuthenticated && !votedSubmissionIds.includes(post.id || post.submissionId)}
               onVote={voteOnPost}
               onRequireAuth={promptLoginForVoting}
+              voteDisabledLabel="Voted"
             />
           ))
         )}
@@ -250,9 +268,10 @@ export default function App() {
                   <SalaryPostCard
                     key={post.id}
                     post={post}
-                    canVote={isAuthenticated}
+                    canVote={isAuthenticated && !votedSubmissionIds.includes(post.id || post.submissionId)}
                     onVote={voteOnPost}
                     onRequireAuth={promptLoginForVoting}
+                    voteDisabledLabel="Voted"
                   />
                 ))
               )}
@@ -260,7 +279,7 @@ export default function App() {
           </section>
         ) : null}
 
-        {activeTab === 'stats' ? <StatsPanel stats={stats} onLoad={() => safelyRun(loadStats)} /> : null}
+        {activeTab === 'stats' ? <StatsPanel stats={stats} /> : null}
       </main>
 
       <footer className="status-strip">

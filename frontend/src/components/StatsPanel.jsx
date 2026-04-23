@@ -1,11 +1,8 @@
-export default function StatsPanel({ stats, onLoad }) {
+export default function StatsPanel({ stats }) {
   return (
     <section className="stats-panel">
       <div className="section-head">
         <h2>Salary Statistics</h2>
-        <button className="primary-submit" onClick={onLoad}>
-          Refresh Stats
-        </button>
       </div>
 
       <div className="stats-grid">

@@ -2,8 +2,9 @@ function formatMoney(amount, currency) {
   return `${Number(amount).toLocaleString()} ${currency}`;
 }
 
-export default function SalaryPostCard({ post, canVote, onVote, onRequireAuth }) {
+export default function SalaryPostCard({ post, canVote, onVote, onRequireAuth, voteDisabledLabel = 'Login to vote' }) {
   const status = post.status || 'APPROVED';
+  const submissionId = post.id || post.submissionId;
 
   return (
     <article className="post-card">
@@ -25,14 +26,14 @@ export default function SalaryPostCard({ post, canVote, onVote, onRequireAuth })
       <div className="post-actions">
         <button
           disabled={!canVote}
-          onClick={() => (canVote ? onVote(post.id, 'UPVOTE') : onRequireAuth())}
+          onClick={() => (canVote ? onVote(submissionId, 'UPVOTE') : onRequireAuth())}
           title={canVote ? 'Upvote this salary post' : 'Login required to vote'}
         >
-          {canVote ? 'Upvote' : 'Login to vote'}
+          {canVote ? 'Upvote' : voteDisabledLabel}
         </button>
         <button
           disabled={!canVote}
-          onClick={() => (canVote ? onVote(post.id, 'DOWNVOTE') : onRequireAuth())}
+          onClick={() => (canVote ? onVote(submissionId, 'DOWNVOTE') : onRequireAuth())}
           title={canVote ? 'Downvote this salary post' : 'Login required to vote'}
         >
           Downvote

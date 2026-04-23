@@ -1,12 +1,13 @@
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5050/api';
 
 export async function callApi(path, options = {}) {
+  const { headers: optionHeaders = {}, ...restOptions } = options;
   const response = await fetch(`${apiBaseUrl}${path}`, {
+    ...restOptions,
     headers: {
       'Content-Type': 'application/json',
-      ...(options.headers || {}),
+      ...optionHeaders,
     },
-    ...options,
   });
 
   const text = await response.text();
