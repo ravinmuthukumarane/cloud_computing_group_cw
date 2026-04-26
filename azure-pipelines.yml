@@ -9,7 +9,7 @@ variables:
   imageTag: '$(Build.BuildId)'
   ravinDockerHubNamespace: 'ravinmuthukumarane'
   nipuniDockerHubNamespace: 'nipuniamarasinghe'
-  selfHostedPoolName: 'cw-cc4'
+  selfHostedPoolName: 'cw-cc5'
   k3dClusterName: 'cloud-salary-cluster'
 
 stages:
