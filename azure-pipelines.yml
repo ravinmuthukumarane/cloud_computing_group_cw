@@ -9,7 +9,7 @@ variables:
   imageTag: '$(Build.BuildId)'
   ravinDockerHubNamespace: 'ravinmuthukumarane'
   nipuniDockerHubNamespace: 'nipuniamarasinghe'
-  selfHostedPoolName: 'cloud-cw-vm-pool'
+  selfHostedPoolName: 'cw-cc'
 
 stages:
   - stage: BuildAndPush
@@ -18,7 +18,7 @@ stages:
       - job: BuildImages
         displayName: Build service images
         pool:
-          name: 'cw-cc'
+          name: $(selfHostedPoolName)
         steps:
           - checkout: self
 
