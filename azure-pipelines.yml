@@ -9,7 +9,8 @@ variables:
   imageTag: '$(Build.BuildId)'
   ravinDockerHubNamespace: 'ravinmuthukumarane'
   nipuniDockerHubNamespace: 'nipuniamarasinghe'
-  selfHostedPoolName: 'cw-cc2'
+  selfHostedPoolName: 'cw-cc3'
+  k3dClusterName: 'cloud-salary-cluster'
 
 stages:
   - stage: BuildAndPush
@@ -78,6 +79,11 @@ stages:
 
           - script: |
               set -e
+
+              echo "Loading kubeconfig for k3d cluster: $(k3dClusterName)"
+              mkdir -p "$HOME/.kube"
+              k3d kubeconfig merge $(k3dClusterName) --kubeconfig-switch-context
+              kubectl config use-context k3d-$(k3dClusterName)
 
               echo "Using Kubernetes context:"
               kubectl config current-context
