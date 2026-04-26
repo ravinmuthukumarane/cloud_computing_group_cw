@@ -9,7 +9,7 @@ variables:
   imageTag: '$(Build.BuildId)'
   ravinDockerHubNamespace: 'ravinmuthukumarane'
   nipuniDockerHubNamespace: 'nipuniamarasinghe'
-  selfHostedPoolName: 'cw-cc'
+  selfHostedPoolName: 'cw-cc1'
 
 stages:
   - stage: BuildAndPush
