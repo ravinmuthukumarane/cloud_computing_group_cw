@@ -106,11 +106,11 @@ Required self-hosted agent pool
 
 The deploy stage uses:
 
-cloud-cw-vm-pool
+cw-cc
 
 This is configured in azure-pipelines.yml:
 
-selfHostedPoolName: 'cloud-cw-vm-pool'
+selfHostedPoolName: 'cw-cc'
 
 Create a self-hosted Azure DevOps agent on the same VM where k3d is running, and
 place it in an agent pool with this name.
