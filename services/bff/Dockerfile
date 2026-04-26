@@ -5,9 +5,12 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && npm cache clean --force
 
+COPY .env ./.env
 COPY src ./src
+
+USER node
 
 EXPOSE 5050
 

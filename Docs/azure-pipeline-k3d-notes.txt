@@ -82,20 +82,23 @@ The names must match the values used in azure-pipelines.yml, or the YAML must be
 edited to match the actual service connection names.
 
 
-Required Azure Pipeline secret variables
-----------------------------------------
+Environment values
+------------------
 
-Create these pipeline variables and mark them secret:
+The pipeline now reads deployment secret values from:
+
+services/identity/.env
+
+It uses these keys from that file:
 
 JWT_SECRET
-POSTGRES_PASSWORD
+DB_NAME
+DB_USER
+DB_PASSWORD
 
-For local coursework testing, the values previously used were:
-
-JWT_SECRET=coursework-local-secret
-POSTGRES_PASSWORD=65610
-
-Do not hardcode real production secrets in YAML.
+Those values are used to create/update Kubernetes Secrets during the deploy
+stage. You no longer need to create JWT_SECRET or POSTGRES_PASSWORD as Azure
+Pipeline variables for this coursework setup.
 
 
 Required self-hosted agent pool
@@ -206,4 +209,3 @@ External access:
 http://VM_PUBLIC_IP:8080/
 
 Azure firewall / NSG must allow inbound TCP port 8080.
-
