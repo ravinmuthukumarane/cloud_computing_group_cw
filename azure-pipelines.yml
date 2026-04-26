@@ -18,7 +18,7 @@ stages:
       - job: BuildImages
         displayName: Build service images
         pool:
-          name: $(selfHostedPoolName)
+          name: 'Default'
         steps:
           - checkout: self
 
