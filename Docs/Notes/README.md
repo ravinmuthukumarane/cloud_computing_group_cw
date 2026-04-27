@@ -15,11 +15,17 @@ submission -> voting -> approval -> search -> stats
 - Search service (`/search`)
 - Stats service (`/stats`)
 - BFF (`/api/*` public interface)
+- React frontend
+- Dockerfiles and Docker Compose setup
+- Kubernetes manifests for k3d deployment
+- Azure DevOps pipeline for Docker image build/push and k3d deployment
 - Service health endpoints (`/health`)
 - Documentation:
 	- architecture
 	- workflow and evidence checklist
 	- API reference
+	- Kubernetes deployment notes
+	- Azure Pipeline workflow and troubleshooting notes
 
 ## 2. Repository Structure
 
@@ -142,9 +148,15 @@ Detailed request/response examples:
 
 See `Docs/workflow.md` for evidence commands.
 
-## 10. Next Phases
+## 10. Final Report Evidence
 
-- Frontend implementation (React)
-- Dockerfiles for all services
-- Kubernetes manifests (namespaces, deployments, services, ingress, PVC)
-- Azure deployment and evidence screenshots
+The main implementation, containerization, Kubernetes manifests, and Azure
+Pipeline deployment workflow are now complete.
+
+Remaining report/evidence work:
+
+- Capture final Azure Pipeline success screenshots.
+- Capture Kubernetes pod, service, ingress, and rollout evidence.
+- Capture application access evidence through the VM public IP on port 8080.
+- Summarize the CI/CD troubleshooting process using:
+  `Docs/final-azure-pipeline-workflow-and-troubleshooting.txt`

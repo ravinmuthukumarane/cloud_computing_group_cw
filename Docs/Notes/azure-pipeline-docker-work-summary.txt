@@ -33,13 +33,29 @@ We prepared the project so that each backend service can be:
 3. Tagged with version 1.0.0.
 4. Pushed to Docker Hub.
 5. Run together with Docker Compose.
-6. Later automated through an Azure Pipeline.
+6. Automated through an Azure Pipeline.
+
+Final CI/CD update:
+
+The Azure Pipeline automation is now working. The final pipeline builds and
+pushes service images using Docker Hub service connections, then deploys to the
+k3d Kubernetes cluster through a self-hosted Azure DevOps agent.
+
+The final self-hosted agent pool used by azure-pipelines.yml is:
+
+cw-cc5
+
+The final Docker image tag used by the pipeline is:
+
+$(Build.BuildId)
 
 
 Important VM note
 -----------------
 
 This work was done on a Debian VM.
+
+Historical note:
 
 Docker commands need sudo on this VM because the current Linux user does not
 have permission to access the Docker socket:
@@ -58,6 +74,18 @@ sudo docker ps
 sudo docker images
 sudo docker build ...
 sudo docker compose up ...
+
+Final Azure Pipeline note:
+
+During the Azure Pipeline setup, Docker access was fixed for the self-hosted
+agent user. The user was added to the docker group, and the Docker socket was
+set to root:docker with group read/write permission. After that, this command
+worked without sudo:
+
+docker ps
+
+This was required because Azure Pipeline script steps run docker build and
+docker push without sudo.
 
 
 Container vs image reminder
@@ -788,4 +816,3 @@ services/search/.dockerignore
 
 services/stats/Dockerfile
 services/stats/.dockerignore
-

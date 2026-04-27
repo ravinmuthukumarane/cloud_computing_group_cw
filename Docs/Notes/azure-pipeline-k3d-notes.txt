@@ -106,11 +106,11 @@ Required self-hosted agent pool
 
 The deploy stage uses:
 
-cw-cc
+cw-cc5
 
 This is configured in azure-pipelines.yml:
 
-selfHostedPoolName: 'cw-cc'
+selfHostedPoolName: 'cw-cc5'
 
 Create a self-hosted Azure DevOps agent on the same VM where k3d is running, and
 place it in an agent pool with this name.
@@ -129,11 +129,17 @@ The VM/self-hosted agent needs:
 
 docker
 kubectl
+k3d
 k3d cluster already running
-kubectl configured to access the k3d cluster
 
 The pipeline does not create the k3d cluster.
 The pipeline deploys to the existing cluster.
+
+The pipeline now loads the k3d kubeconfig during the deploy stage, so the agent
+does not need a pre-existing current kubectl context. The deploy stage runs:
+
+k3d kubeconfig merge cloud-salary-cluster --kubeconfig-merge-default --kubeconfig-switch-context
+kubectl config use-context k3d-cloud-salary-cluster
 
 
 Expected k3d cluster setup
@@ -160,15 +166,32 @@ The deploy stage:
 
 1. Applies app and data namespaces.
 2. Applies app ConfigMap.
-3. Creates/updates app-secrets from Azure Pipeline secret variables.
-4. Creates/updates app-db-secret from Azure Pipeline secret variables.
-5. Creates/updates postgres-secret from Azure Pipeline secret variables.
+3. Creates/updates app-secrets from services/identity/.env.
+4. Creates/updates app-db-secret from services/identity/.env.
+5. Creates/updates postgres-secret from services/identity/.env.
 6. Applies PostgreSQL ConfigMap, PVC, Deployment, and Service.
 7. Applies all app Deployments and Services.
 8. Applies ingress.
 9. Updates each Deployment image to the tag built by the current pipeline run.
 10. Waits for all rollouts.
 11. Prints pod, service, PVC, and ingress summaries.
+
+
+Final Docker Hub login order
+----------------------------
+
+The final pipeline does not log in to both Docker Hub accounts before pushing
+all images.
+
+It uses this order:
+
+1. Login to Docker Hub - ravinmuthukumarane.
+2. Build and push ravinmuthukumarane images.
+3. Login to Docker Hub - nipuniamarasinghe.
+4. Build and push nipuniamarasinghe images.
+
+This avoids the second Docker Hub login overwriting the first login before the
+first account's images are pushed.
 
 
 PostgreSQL init note

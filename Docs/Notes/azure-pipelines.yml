@@ -9,7 +9,8 @@ variables:
   imageTag: '$(Build.BuildId)'
   ravinDockerHubNamespace: 'ravinmuthukumarane'
   nipuniDockerHubNamespace: 'nipuniamarasinghe'
-  selfHostedPoolName: 'cw-cc'
+  selfHostedPoolName: 'cw-cc5'
+  k3dClusterName: 'cloud-salary-cluster'
 
 stages:
   - stage: BuildAndPush
@@ -28,6 +29,20 @@ stages:
               command: login
               containerRegistry: dockerhub-ravinmuthukumarane
 
+          - script: |
+              set -e
+
+              echo "Building and pushing ravinmuthukumarane images with tag: $(imageTag)"
+
+              docker build -t $(ravinDockerHubNamespace)/bff-service:$(imageTag) services/bff
+              docker build -t $(ravinDockerHubNamespace)/identity-service:$(imageTag) services/identity
+              docker build -t $(ravinDockerHubNamespace)/salary-submission-service:$(imageTag) services/salary-submission
+
+              docker push $(ravinDockerHubNamespace)/bff-service:$(imageTag)
+              docker push $(ravinDockerHubNamespace)/identity-service:$(imageTag)
+              docker push $(ravinDockerHubNamespace)/salary-submission-service:$(imageTag)
+            displayName: Build and push ravinmuthukumarane images
+
           - task: Docker@2
             displayName: Login to Docker Hub - nipuniamarasinghe
             inputs:
@@ -37,26 +52,18 @@ stages:
           - script: |
               set -e
 
-              echo "Building images with tag: $(imageTag)"
-
-              docker build -t $(ravinDockerHubNamespace)/bff-service:$(imageTag) services/bff
-              docker build -t $(ravinDockerHubNamespace)/identity-service:$(imageTag) services/identity
-              docker build -t $(ravinDockerHubNamespace)/salary-submission-service:$(imageTag) services/salary-submission
+              echo "Building and pushing nipuniamarasinghe images with tag: $(imageTag)"
 
               docker build -t $(nipuniDockerHubNamespace)/vote-service:$(imageTag) services/vote
               docker build -t $(nipuniDockerHubNamespace)/search-service:$(imageTag) services/search
               docker build -t $(nipuniDockerHubNamespace)/stats-service:$(imageTag) services/stats
               docker build --build-arg VITE_API_BASE_URL=/api -t $(nipuniDockerHubNamespace)/frontend-service:$(imageTag) frontend
 
-              docker push $(ravinDockerHubNamespace)/bff-service:$(imageTag)
-              docker push $(ravinDockerHubNamespace)/identity-service:$(imageTag)
-              docker push $(ravinDockerHubNamespace)/salary-submission-service:$(imageTag)
-
               docker push $(nipuniDockerHubNamespace)/vote-service:$(imageTag)
               docker push $(nipuniDockerHubNamespace)/search-service:$(imageTag)
               docker push $(nipuniDockerHubNamespace)/stats-service:$(imageTag)
               docker push $(nipuniDockerHubNamespace)/frontend-service:$(imageTag)
-            displayName: Build and push all images
+            displayName: Build and push nipuniamarasinghe images
 
   - stage: DeployToK3d
     displayName: Deploy to k3d Kubernetes cluster
@@ -72,6 +79,11 @@ stages:
 
           - script: |
               set -e
+
+              echo "Loading kubeconfig for k3d cluster: $(k3dClusterName)"
+              mkdir -p "$HOME/.kube"
+              k3d kubeconfig merge $(k3dClusterName) --kubeconfig-merge-default --kubeconfig-switch-context
+              kubectl config use-context k3d-$(k3dClusterName)
 
               echo "Using Kubernetes context:"
               kubectl config current-context
