@@ -15,11 +15,17 @@ submission -> voting -> approval -> search -> stats
 - Search service (`/search`)
 - Stats service (`/stats`)
 - BFF (`/api/*` public interface)
+- React frontend
+- Dockerfiles and Docker Compose setup
+- Kubernetes manifests for k3d deployment
+- Azure DevOps pipeline for Docker image build/push and k3d deployment
 - Service health endpoints (`/health`)
 - Documentation:
 	- architecture
 	- workflow and evidence checklist
 	- API reference
+	- Kubernetes deployment notes
+	- Azure Pipeline workflow and troubleshooting notes
 
 ## 2. Repository Structure
 
@@ -27,6 +33,22 @@ submission -> voting -> approval -> search -> stats
 .
 ├── frontend/
 │   └── README.md
+├── k8s/
+│   ├── bff/
+│   ├── configmaps/
+│   ├── frontend/
+│   ├── identity/
+│   ├── ingress/
+│   ├── namespaces/
+│   ├── postgres/
+│   ├── salary-submission/
+│   ├── search/
+│   ├── stats/
+│   └── vote/
+├── Docs/
+│   ├── final-azure-pipeline-workflow-and-troubleshooting.txt
+│   ├── kubernetes-k3d-deployment-notes.txt
+│   └── azure-pipeline-k3d-notes.txt
 └── services/
 		├── bff/
 		├── identity/
@@ -87,3 +109,21 @@ npm start --prefix services/bff
 6. Verify record appears in search
 7. Verify stats include approved data
 
+## 8. CI/CD and Kubernetes Deployment
+
+The project includes an Azure DevOps pipeline in `azure-pipelines.yml`.
+
+The pipeline:
+
+1. Runs on pushes to `main`.
+2. Uses the self-hosted agent pool `cw-cc5`.
+3. Builds service Docker images.
+4. Pushes images to Docker Hub using the configured Docker Hub service connections.
+5. Loads the local k3d kubeconfig for `cloud-salary-cluster`.
+6. Applies Kubernetes manifests and updates deployments to the current `Build.BuildId` image tag.
+
+Detailed deployment and troubleshooting notes are in:
+
+- `Docs/kubernetes-k3d-deployment-notes.txt`
+- `Docs/azure-pipeline-k3d-notes.txt`
+- `Docs/final-azure-pipeline-workflow-and-troubleshooting.txt`

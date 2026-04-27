@@ -26,15 +26,26 @@ http://localhost:8080/
 Important working rule followed
 -------------------------------
 
+This document originally records the manual k3d deployment path used while
+building and validating the Kubernetes manifests.
+
 Commands were run manually in the terminal so output could be captured for the
 coursework report.
 
 Codex generated files and provided commands, but Kubernetes/Docker/k3d commands
 were run manually by the user.
 
+The same deployment is now also automated through Azure DevOps in
+azure-pipelines.yml. The automated workflow uses a self-hosted agent on the same
+VM, builds Docker images, pushes them to Docker Hub, loads the k3d kubeconfig,
+applies the manifests, updates deployments to the current pipeline image tag,
+and waits for rollouts.
+
 
 Docker Hub image ownership used
 -------------------------------
+
+The initial manual Kubernetes deployment used fixed image tags:
 
 Images from nipuniamarasinghe:
 
@@ -48,6 +59,18 @@ Images from ravinmuthukumarane:
 ravinmuthukumarane/bff-service:1.0.0
 ravinmuthukumarane/identity-service:1.0.0
 ravinmuthukumarane/salary-submission-service:1.0.0
+
+The final Azure Pipeline uses the same Docker Hub repositories, but tags images
+with the Azure DevOps Build.BuildId value for each run:
+
+ravinmuthukumarane/bff-service:$(Build.BuildId)
+ravinmuthukumarane/identity-service:$(Build.BuildId)
+ravinmuthukumarane/salary-submission-service:$(Build.BuildId)
+
+nipuniamarasinghe/vote-service:$(Build.BuildId)
+nipuniamarasinghe/search-service:$(Build.BuildId)
+nipuniamarasinghe/stats-service:$(Build.BuildId)
+nipuniamarasinghe/frontend-service:$(Build.BuildId)
 
 
 Kubernetes namespaces
@@ -400,6 +423,14 @@ VITE_API_BASE_URL=/api
 Final Kubernetes frontend image:
 
 nipuniamarasinghe/frontend-service:1.0.1
+
+In the final Azure Pipeline workflow, this fixed image tag is replaced during
+deployment by:
+
+nipuniamarasinghe/frontend-service:$(Build.BuildId)
+
+The pipeline performs the same tag update for all application deployments using
+kubectl set image.
 
 Command:
 
@@ -839,4 +870,3 @@ postgres
 PVC reached Bound:
 
 postgres-pvc
-
