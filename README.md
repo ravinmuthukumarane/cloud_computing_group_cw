@@ -45,10 +45,6 @@ submission -> voting -> approval -> search -> stats
 │   ├── search/
 │   ├── stats/
 │   └── vote/
-├── Docs/
-│   ├── final-azure-pipeline-workflow-and-troubleshooting.txt
-│   ├── kubernetes-k3d-deployment-notes.txt
-│   └── azure-pipeline-k3d-notes.txt
 └── services/
 		├── bff/
 		├── identity/
@@ -122,8 +118,3 @@ The pipeline:
 5. Loads the local k3d kubeconfig for `cloud-salary-cluster`.
 6. Applies Kubernetes manifests and updates deployments to the current `Build.BuildId` image tag.
 
-Detailed deployment and troubleshooting notes are in:
-
-- `Docs/kubernetes-k3d-deployment-notes.txt`
-- `Docs/azure-pipeline-k3d-notes.txt`
-- `Docs/final-azure-pipeline-workflow-and-troubleshooting.txt`
