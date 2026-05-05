@@ -1,0 +1,712 @@
+Final Azure Pipeline workflow and troubleshooting notes
+=======================================================
+
+Purpose of this document
+------------------------
+
+This document records the final working Azure DevOps pipeline workflow for the
+cloud computing coursework project and the main issues encountered while setting
+it up.
+
+It is intended to support the final report. The first section describes the
+correct working workflow. Later sections describe the problems faced, the cause
+of each problem, and the fix that was applied.
+
+
+Final working workflow
+----------------------
+
+The final pipeline builds Docker images, pushes them to Docker Hub, and deploys
+the Kubernetes manifests to a local k3d cluster running on the coursework VM.
+
+The pipeline is defined in:
+
+azure-pipelines.yml
+
+The final pipeline has two stages:
+
+1. BuildAndPush
+2. DeployToK3d
+
+
+High-level flow
+---------------
+
+The working flow is:
+
+1. A change is pushed or merged into the main branch.
+2. Azure DevOps triggers the pipeline.
+3. Azure DevOps sends the job to the self-hosted agent pool.
+4. The self-hosted agent runs on the same VM as Docker and the k3d cluster.
+5. The build stage logs in to Docker Hub using Azure DevOps service connections.
+6. The build stage builds all service images.
+7. The build stage pushes the images to Docker Hub using the Build.BuildId tag.
+8. The deploy stage loads the k3d kubeconfig.
+9. The deploy stage applies Kubernetes namespaces, ConfigMaps, Secrets,
+   PostgreSQL manifests, application manifests, and ingress.
+10. The deploy stage updates Kubernetes deployments to use the image tag built
+    by the current pipeline run.
+11. The deploy stage waits for the Kubernetes rollouts to complete.
+12. The pipeline prints a final Kubernetes resource summary.
+
+
+Trigger configuration
+---------------------
+
+The pipeline is configured to run automatically only for the main branch:
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr: none
+
+This means commits pushed directly to main, or pull requests merged into main,
+start a pipeline run automatically.
+
+The pipeline does not run for pull request validation because pr is disabled:
+
+pr: none
+
+
+Self-hosted agent design
+------------------------
+
+The pipeline uses a self-hosted Azure DevOps agent instead of a Microsoft-hosted
+agent.
+
+This is required because the deployment target is a k3d cluster running locally
+on the same VM. A Microsoft-hosted Azure agent would not be able to access that
+local Docker/k3d environment.
+
+The current pipeline variable is:
+
+selfHostedPoolName: 'cw-cc5'
+
+The agent registered in Azure DevOps must be in the same pool:
+
+Pool: cw-cc5
+Agent: Cloud-CW-deb
+
+The agent is started manually from the VM using:
+
+cd ~/cloud_computing_group_cw/myagent
+./run.sh
+
+When the agent is running, Azure DevOps can send jobs to the VM. When ./run.sh
+is stopped with Ctrl+C, the agent goes offline and new jobs will wait in the
+queue until the agent is started again.
+
+
+Required tools on the VM
+------------------------
+
+The VM must have these tools available to the self-hosted agent user:
+
+docker
+kubectl
+k3d
+
+Docker must be running, and the agent user must be able to run Docker commands
+without sudo:
+
+docker ps
+
+The k3d cluster must already exist and be running. The pipeline does not create
+the k3d cluster; it deploys to the existing cluster.
+
+The cluster name used by the pipeline is:
+
+k3dClusterName: 'cloud-salary-cluster'
+
+The expected Kubernetes context name is:
+
+k3d-cloud-salary-cluster
+
+
+Docker Hub service connections
+------------------------------
+
+Two Docker Hub service connections were created in Azure DevOps:
+
+1. dockerhub-ravinmuthukumarane
+2. dockerhub-nipuniamarasinghe
+
+These names are referenced directly in azure-pipelines.yml.
+
+The pipeline uses Docker@2 login tasks:
+
+containerRegistry: dockerhub-ravinmuthukumarane
+containerRegistry: dockerhub-nipuniamarasinghe
+
+Azure DevOps may ask for permission to use these service connections the first
+time a pipeline run references them. The service connections must be authorized
+for the pipeline.
+
+
+Docker images built and pushed
+------------------------------
+
+The pipeline builds and pushes these images owned by ravinmuthukumarane:
+
+ravinmuthukumarane/bff-service:$(Build.BuildId)
+ravinmuthukumarane/identity-service:$(Build.BuildId)
+ravinmuthukumarane/salary-submission-service:$(Build.BuildId)
+
+The pipeline builds and pushes these images owned by nipuniamarasinghe:
+
+nipuniamarasinghe/vote-service:$(Build.BuildId)
+nipuniamarasinghe/search-service:$(Build.BuildId)
+nipuniamarasinghe/stats-service:$(Build.BuildId)
+nipuniamarasinghe/frontend-service:$(Build.BuildId)
+
+The image tag is:
+
+$(Build.BuildId)
+
+This makes each pipeline run produce a unique image tag.
+
+
+Frontend build setting
+----------------------
+
+The frontend image is built with:
+
+VITE_API_BASE_URL=/api
+
+This is important for Kubernetes ingress. In the Kubernetes deployment, browser
+requests should go through the ingress path:
+
+/api
+
+The frontend should not be built with a local Docker Compose URL such as:
+
+http://localhost:5050/api
+
+
+Docker login and push ordering
+------------------------------
+
+The final workflow logs in and pushes images in two separate groups:
+
+1. Login to Docker Hub as ravinmuthukumarane.
+2. Build and push ravinmuthukumarane images.
+3. Login to Docker Hub as nipuniamarasinghe.
+4. Build and push nipuniamarasinghe images.
+
+This ordering avoids one Docker Hub login overwriting the previous login before
+the related images have been pushed.
+
+
+Kubernetes deployment workflow
+------------------------------
+
+The deploy stage first loads the k3d kubeconfig:
+
+mkdir -p "$HOME/.kube"
+k3d kubeconfig merge $(k3dClusterName) --kubeconfig-merge-default --kubeconfig-switch-context
+kubectl config use-context k3d-$(k3dClusterName)
+
+Then it confirms the context:
+
+kubectl config current-context
+
+The deploy stage applies:
+
+1. Kubernetes namespaces
+2. ConfigMaps
+3. Secrets generated from services/identity/.env
+4. PostgreSQL manifests
+5. Application manifests
+6. Ingress manifest
+
+Then it updates the Kubernetes deployments to use the image tag from the current
+pipeline run:
+
+kubectl set image deployment/bff bff=$(ravinDockerHubNamespace)/bff-service:$(imageTag) -n app
+kubectl set image deployment/identity identity=$(ravinDockerHubNamespace)/identity-service:$(imageTag) -n app
+kubectl set image deployment/salary-submission salary-submission=$(ravinDockerHubNamespace)/salary-submission-service:$(imageTag) -n app
+kubectl set image deployment/vote vote=$(nipuniDockerHubNamespace)/vote-service:$(imageTag) -n app
+kubectl set image deployment/search search=$(nipuniDockerHubNamespace)/search-service:$(imageTag) -n app
+kubectl set image deployment/stats stats=$(nipuniDockerHubNamespace)/stats-service:$(imageTag) -n app
+kubectl set image deployment/frontend frontend=$(nipuniDockerHubNamespace)/frontend-service:$(imageTag) -n app
+
+Finally, it waits for rollouts and prints resource summaries:
+
+kubectl rollout status deployment/postgres -n data
+kubectl rollout status deployment/identity -n app
+kubectl rollout status deployment/salary-submission -n app
+kubectl rollout status deployment/vote -n app
+kubectl rollout status deployment/search -n app
+kubectl rollout status deployment/stats -n app
+kubectl rollout status deployment/bff -n app
+kubectl rollout status deployment/frontend -n app
+
+
+Secret handling
+---------------
+
+For the coursework setup, the pipeline reads required secret values from:
+
+services/identity/.env
+
+The required keys are:
+
+JWT_SECRET
+DB_NAME
+DB_USER
+DB_PASSWORD
+
+The pipeline creates or updates these Kubernetes Secrets:
+
+app-secrets in namespace app
+app-db-secret in namespace app
+postgres-secret in namespace data
+
+The deploy script checks that all required values are present. If any value is
+missing, the deploy stage fails early with a clear error message.
+
+
+Final successful result
+-----------------------
+
+The final successful Azure DevOps run showed both stages passing:
+
+Build and push Docker images
+Deploy to k3d Kubernetes cluster
+
+The successful run used:
+
+Pool: cw-cc5
+Agent: Cloud-CW-deb
+
+This confirmed the end-to-end flow:
+
+Azure DevOps pipeline -> self-hosted VM agent -> Docker build and push ->
+k3d Kubernetes deployment
+
+
+Issues faced and fixes applied
+==============================
+
+Issue 1: Docker permission denied on self-hosted agent
+------------------------------------------------------
+
+Observed error:
+
+permission denied while trying to connect to the docker API at unix:///var/run/docker.sock
+
+Where it happened:
+
+Build and push all images
+
+Cause:
+
+The Azure self-hosted agent runs on the VM, and the agent user must have
+permission to access Docker through /var/run/docker.sock. The Docker socket was
+not accessible to the user running the agent.
+
+Diagnostics used:
+
+docker ps
+ls -l /var/run/docker.sock
+groups ravinmuthukumarane
+
+The socket ownership was found to be unusual:
+
+/var/run/docker.sock -> nobody:nogroup
+
+The user needed Docker access without sudo.
+
+Fix:
+
+The user was added to the docker group:
+
+sudo usermod -aG docker ravinmuthukumarane
+
+The Docker socket ownership and permissions were corrected:
+
+sudo chown root:docker /var/run/docker.sock
+sudo chmod 660 /var/run/docker.sock
+
+The shell group membership was refreshed:
+
+newgrp docker
+
+The fix was verified with:
+
+docker ps
+
+After docker ps worked without sudo, the Docker permission error was resolved.
+
+
+Issue 2: Confusion about self-hosted agent meaning
+--------------------------------------------------
+
+Question:
+
+Does "self-hosted agent" mean the VM being used?
+
+Answer:
+
+Yes. In this setup, the self-hosted Azure DevOps agent is installed and run on
+the same VM used for Docker and k3d.
+
+This is why Docker and kubectl commands run on that VM when the pipeline runs.
+
+
+Issue 3: Azure agent service not found
+--------------------------------------
+
+Observed error:
+
+Failed to stop vsts.agent...service: Unit ... not loaded.
+Failed to start vsts.agent...service: Unit ... not found.
+
+Cause:
+
+The Azure agent had not been installed as a systemd service, or the service
+configuration was not currently loaded. The agent was being run manually with:
+
+./run.sh
+
+Fix:
+
+The agent can be run manually:
+
+cd ~/cloud_computing_group_cw/myagent
+./run.sh
+
+Alternatively, it can be installed as a service:
+
+sudo ./svc.sh install ravinmuthukumarane
+sudo ./svc.sh start
+
+For the final working setup, running the agent manually with ./run.sh was used.
+
+
+Issue 4: Agent pool name mismatch
+---------------------------------
+
+Observed behavior:
+
+The agent was registered into one pool, while azure-pipelines.yml referenced a
+different pool.
+
+Examples encountered during troubleshooting included:
+
+cw-cc
+cw-cc1
+cw-cc2
+cw-cc3
+cw-cc4
+cw-cc5
+
+Cause:
+
+Each time the agent was reconfigured or a new pool was selected, the YAML pool
+value also needed to match it.
+
+Fix:
+
+The final YAML uses:
+
+selfHostedPoolName: 'cw-cc5'
+
+The final Azure DevOps run used:
+
+Pool: cw-cc5
+Agent: Cloud-CW-deb
+
+This confirmed that the pipeline and agent pool matched.
+
+
+Issue 5: Docker Hub push authorization failed
+---------------------------------------------
+
+Observed error:
+
+push access denied, repository does not exist or may require authorization:
+server message: insufficient_scope: authorization failed
+
+Cause:
+
+The pipeline originally logged in to both Docker Hub accounts before pushing all
+images. Docker stores registry login state, so the second Docker Hub login could
+overwrite the first login. This meant the pipeline could try pushing
+ravinmuthukumarane images while authenticated as nipuniamarasinghe, or vice
+versa.
+
+Fix:
+
+The build stage was split into two login/build/push groups:
+
+1. Login to Docker Hub - ravinmuthukumarane
+2. Build and push ravinmuthukumarane images
+3. Login to Docker Hub - nipuniamarasinghe
+4. Build and push nipuniamarasinghe images
+
+This ensured each image group was pushed immediately after logging in as the
+correct Docker Hub account.
+
+
+Issue 6: Azure DevOps service connection authorization
+------------------------------------------------------
+
+Observed behavior:
+
+Azure DevOps asked for permission to use Docker Hub service connections.
+
+Cause:
+
+Azure DevOps protects service connections. A pipeline must be authorized before
+it can use a service connection.
+
+Fix:
+
+The Docker Hub service connections were authorized for the pipeline:
+
+dockerhub-ravinmuthukumarane
+dockerhub-nipuniamarasinghe
+
+The recommended permanent setting is to either authorize the specific pipeline
+or enable access for all pipelines if appropriate for the project.
+
+
+Issue 7: Kubernetes current-context not set
+-------------------------------------------
+
+Observed error:
+
+error: current-context is not set
+
+Where it happened:
+
+Deploy manifests and update image tags
+
+Cause:
+
+The self-hosted agent user's environment did not have a Kubernetes context in
+~/.kube/config. Running kubectl config current-context failed because kubectl
+did not know which cluster to use.
+
+Fix:
+
+The deploy stage was updated to load the kubeconfig from the k3d cluster before
+running kubectl commands:
+
+mkdir -p "$HOME/.kube"
+k3d kubeconfig merge $(k3dClusterName) --kubeconfig-merge-default --kubeconfig-switch-context
+kubectl config use-context k3d-$(k3dClusterName)
+
+
+Issue 8: k3d context name not found
+-----------------------------------
+
+Observed error:
+
+error: no context exists with the name: "k3d-cloud-salary-cluster"
+
+Cause:
+
+The context name itself was correct, but the first version of the pipeline used:
+
+k3d kubeconfig merge $(k3dClusterName) --kubeconfig-switch-context
+
+In this environment, that command printed the kubeconfig file path but did not
+merge the context into the default kubeconfig that kubectl was reading.
+
+Fix:
+
+The command was changed to include:
+
+--kubeconfig-merge-default
+
+Final command:
+
+k3d kubeconfig merge $(k3dClusterName) --kubeconfig-merge-default --kubeconfig-switch-context
+
+After this, kubectl could use:
+
+k3d-cloud-salary-cluster
+
+
+Issue 9: Azure agent session revoked / unauthorized
+---------------------------------------------------
+
+Observed errors:
+
+Failed to create session. VS30063: You are not authorized to access https://dev.azure.com.
+The session ... has been revoked.
+Client registration not found.
+
+Cause:
+
+The self-hosted agent's stored credentials/session became invalid after agent
+registration changes and PAT changes. The agent could no longer authenticate to
+Azure DevOps.
+
+Fix:
+
+The agent was reconfigured with a valid Azure DevOps Personal Access Token
+(PAT). The PAT needed permissions to manage/read agent pools.
+
+The agent was removed and configured again:
+
+cd ~/cloud_computing_group_cw/myagent
+./config.sh remove
+./config.sh
+
+The correct values were entered:
+
+Server URL: https://dev.azure.com/w2121674/
+Authentication type: PAT
+Agent pool: cw-cc5
+Agent name: Cloud-CW-deb
+Work folder: _work
+
+Then the agent was restarted:
+
+./run.sh
+
+
+Issue 10: Git branch divergence during pipeline edits
+-----------------------------------------------------
+
+Observed error:
+
+fatal: Need to specify how to reconcile divergent branches.
+
+Cause:
+
+The local azure-pipeline branch had one local commit, while the remote branch
+had several new commits. Git could not pull without knowing whether to merge or
+rebase.
+
+Fix:
+
+The local branch was rebased onto the remote branch:
+
+git pull --rebase origin azure-pipeline
+
+Then the branch was pushed:
+
+git push origin azure-pipeline
+
+After the rebase and push, the branch was synchronized with the remote.
+
+
+Issue 11: Trigger YAML misunderstanding
+---------------------------------------
+
+Incorrect attempt:
+
+trigger:
+- task: Docker@2
+  inputs:
+    containerRegistry: 'dockerhub-nipuniamarasinghe'
+    command: 'login'
+  branches:
+    include:
+      - main
+
+Cause:
+
+The trigger section is only for deciding when the pipeline starts. It cannot
+contain tasks. Docker login tasks must be placed under jobs -> steps.
+
+Fix:
+
+The correct trigger was kept simple:
+
+trigger:
+  branches:
+    include:
+      - main
+
+The Docker login tasks remain under the build job steps:
+
+- task: Docker@2
+  inputs:
+    command: login
+    containerRegistry: dockerhub-ravinmuthukumarane
+
+- task: Docker@2
+  inputs:
+    command: login
+    containerRegistry: dockerhub-nipuniamarasinghe
+
+
+Issue 12: Temporarily stopping automatic execution
+--------------------------------------------------
+
+Question:
+
+Can the pipeline be stopped for now and started later without breaking the
+pipeline definition?
+
+Answer:
+
+Yes. Since the setup uses a manually started self-hosted agent, stopping the
+agent stops the VM from accepting pipeline jobs:
+
+Ctrl+C
+
+in the terminal running:
+
+./run.sh
+
+Later, the agent can be started again:
+
+cd ~/cloud_computing_group_cw/myagent
+./run.sh
+
+The pipeline YAML still works. If a run is triggered while the self-hosted agent
+is offline, Azure DevOps may leave the job queued until the agent comes back
+online, or the queued run can be cancelled manually.
+
+
+Important security note
+-----------------------
+
+During troubleshooting, a Personal Access Token was pasted into terminal output.
+Tokens must be treated as secrets.
+
+If a PAT is ever exposed in logs, chat, screenshots, or terminal history, it
+should be revoked in Azure DevOps and replaced with a new token.
+
+
+Final state summary
+-------------------
+
+The final working setup is:
+
+Pipeline file: azure-pipelines.yml
+Trigger branch: main
+Self-hosted agent pool: cw-cc5
+Agent name: Cloud-CW-deb
+Docker Hub service connections:
+  dockerhub-ravinmuthukumarane
+  dockerhub-nipuniamarasinghe
+k3d cluster name: cloud-salary-cluster
+Kubernetes context: k3d-cloud-salary-cluster
+Image tag: $(Build.BuildId)
+
+The final successful result showed:
+
+Build service images: succeeded
+Apply Kubernetes manifests: succeeded
+
+This confirms the complete CI/CD path:
+
+Source code change on main
+-> Azure DevOps pipeline trigger
+-> self-hosted VM agent
+-> Docker build
+-> Docker Hub push
+-> k3d kubeconfig setup
+-> Kubernetes manifest apply
+-> deployment image update
+-> rollout verification
+

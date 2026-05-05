@@ -1,0 +1,497 @@
+Service Design - Cloud Salary Transparency System
+====================================================================
+
+1. System Overview
+------------------
+This system is a cloud-native microservice application for salary transparency.
+It follows a Backend-for-Frontend (BFF) architecture where all client requests are routed through a single entry point.
+
+Architecture Flow:
+Frontend -> BFF -> Internal Microservices:
+- Identity Service
+- Salary Submission Service
+- Vote Service
+- Search Service
+- Stats Service
+
+--------------------------------------------------------------------
+
+2. Service Responsibilities
+---------------------------
+
+2.1 Frontend Service
+- Provides user interface
+- Collects user inputs
+- Sends API requests only to BFF
+- Stores authentication token (JWT)
+- Displays search results and statistics
+
+2.2 BFF (Backend-for-Frontend)
+- Single public API entry point
+- Routes requests to internal services
+- Validates authentication for protected routes
+- Aggregates and formats responses for frontend
+- Prevents direct exposure of internal services
+
+2.3 Identity Service
+- Handles user registration (signup)
+- Handles user authentication (login)
+- Hashes and stores passwords securely
+- Generates authentication tokens (JWT)
+- Validates tokens for protected operations
+
+2.4 Salary Submission Service
+- Accepts anonymous salary submissions
+- Validates input data
+- Stores submissions as PENDING
+- Stores anonymization preference
+- Does NOT store any user identity data
+
+2.5 Vote Service
+- Accepts authenticated votes
+- Ensures one vote per user per submission
+- Tracks vote counts
+- Applies approval threshold logic
+- Updates submission status to APPROVED when threshold is reached
+
+2.6 Search Service
+- Retrieves salary data
+- Filters by country, company, role, experience level
+- Returns only APPROVED submissions
+- Applies anonymization rules if required
+
+2.7 Stats Service
+- Computes aggregated salary insights
+- Calculates:
+  - average
+  - median
+  - percentiles (e.g., p90)
+- Uses only approved salary data
+
+--------------------------------------------------------------------
+
+3. Public API (via BFF)
+-----------------------
+
+3.1 Authentication
+
+Endpoint:
+POST /api/auth/signup
+
+Request Body:
+{
+  "email": "user@example.com",
+  "password": "StrongPassword123"
+}
+
+Success Response:
+{
+  "message": "User created successfully"
+}
+
+Possible Error Response:
+{
+  "error": "Email already exists"
+}
+
+--------------------------------------------------
+
+Endpoint:
+POST /api/auth/login
+
+Request Body:
+{
+  "email": "user@example.com",
+  "password": "StrongPassword123"
+}
+
+Success Response:
+{
+  "token": "jwt-token",
+  "user": {
+    "id": "uuid"
+  }
+}
+
+Possible Error Response:
+{
+  "error": "Invalid credentials"
+}
+
+--------------------------------------------------
+
+3.2 Salary Submission (Public)
+
+Endpoint:
+POST /api/salaries
+
+Request Body:
+{
+  "country": "Sri Lanka",
+  "company": "WSO2",
+  "role": "Software Engineer",
+  "experienceLevel": "Mid",
+  "salaryAmount": 350000,
+  "currency": "LKR",
+  "anonymize": true
+}
+
+Success Response:
+{
+  "submissionId": "uuid",
+  "status": "PENDING",
+  "message": "Salary submitted successfully"
+}
+
+Possible Error Response:
+{
+  "error": "Validation failed"
+}
+
+--------------------------------------------------
+
+3.3 Voting (Protected)
+
+Endpoint:
+POST /api/votes
+
+Headers:
+Authorization: Bearer <token>
+
+Request Body:
+{
+  "submissionId": "uuid",
+  "voteType": "UPVOTE"
+}
+
+Success Response (still pending):
+{
+  "message": "Vote recorded",
+  "submissionStatus": "PENDING",
+  "currentScore": 3
+}
+
+Success Response (threshold reached):
+{
+  "message": "Vote recorded",
+  "submissionStatus": "APPROVED",
+  "currentScore": 5
+}
+
+Possible Error Responses:
+{
+  "error": "Unauthorized"
+}
+
+{
+  "error": "User has already voted on this submission"
+}
+
+--------------------------------------------------
+
+3.4 Search (Public)
+
+Endpoint:
+GET /api/search
+
+Example Request:
+GET /api/search?country=Sri%20Lanka&role=Software%20Engineer
+
+Success Response:
+{
+  "results": [
+    {
+      "id": "uuid",
+      "country": "Sri Lanka",
+      "company": "Anonymous",
+      "role": "Software Engineer",
+      "experienceLevel": "Mid",
+      "salaryAmount": 350000,
+      "currency": "LKR"
+    }
+  ]
+}
+
+Notes:
+- Only APPROVED salaries are returned
+- If anonymize = true, identifying fields such as company can be generalized
+
+--------------------------------------------------
+
+3.5 Stats (Public)
+
+Endpoint:
+GET /api/stats
+
+Example Request:
+GET /api/stats?country=Sri%20Lanka&role=Software%20Engineer
+
+Success Response:
+{
+  "count": 12,
+  "average": 410000,
+  "median": 395000,
+  "p90": 550000,
+  "currency": "LKR"
+}
+
+Notes:
+- Only APPROVED salaries are used to calculate statistics
+
+--------------------------------------------------------------------
+
+4. Internal Service APIs
+------------------------
+
+4.1 Identity Service
+
+Endpoint:
+POST /signup
+
+Request Body:
+{
+  "email": "user@example.com",
+  "password": "StrongPassword123"
+}
+
+Response:
+{
+  "message": "User created successfully"
+}
+
+--------------------------------------------------
+
+Endpoint:
+POST /login
+
+Request Body:
+{
+  "email": "user@example.com",
+  "password": "StrongPassword123"
+}
+
+Response:
+{
+  "token": "jwt-token",
+  "user": {
+    "id": "uuid"
+  }
+}
+
+--------------------------------------------------
+
+Endpoint:
+POST /validate (optional)
+
+Request Body:
+{
+  "token": "jwt-token"
+}
+
+Response:
+{
+  "valid": true,
+  "user": {
+    "id": "uuid"
+  }
+}
+
+--------------------------------------------------
+
+4.2 Salary Submission Service
+
+Endpoint:
+POST /submissions
+
+Request Body:
+{
+  "country": "Sri Lanka",
+  "company": "WSO2",
+  "role": "Software Engineer",
+  "experienceLevel": "Mid",
+  "salaryAmount": 350000,
+  "currency": "LKR",
+  "anonymize": true
+}
+
+Response:
+{
+  "submissionId": "uuid",
+  "status": "PENDING"
+}
+
+--------------------------------------------------
+
+Endpoint:
+GET /submissions/:id
+
+Response:
+{
+  "id": "uuid",
+  "country": "Sri Lanka",
+  "company": "WSO2",
+  "role": "Software Engineer",
+  "experienceLevel": "Mid",
+  "salaryAmount": 350000,
+  "currency": "LKR",
+  "anonymize": true,
+  "status": "PENDING",
+  "createdAt": "2026-03-01T10:00:00Z"
+}
+
+--------------------------------------------------
+
+Endpoint:
+PATCH /submissions/:id/status
+
+Request Body:
+{
+  "status": "APPROVED"
+}
+
+Response:
+{
+  "message": "Submission status updated",
+  "status": "APPROVED"
+}
+
+--------------------------------------------------
+
+4.3 Vote Service
+
+Endpoint:
+POST /votes
+
+Request Body:
+{
+  "submissionId": "uuid",
+  "userId": "uuid",
+  "voteType": "UPVOTE"
+}
+
+Response:
+{
+  "message": "Vote recorded",
+  "submissionStatus": "PENDING",
+  "currentScore": 3
+}
+
+--------------------------------------------------
+
+Endpoint:
+GET /votes/submission/:submissionId
+
+Response:
+{
+  "submissionId": "uuid",
+  "upvotes": 3,
+  "downvotes": 0,
+  "currentScore": 3
+}
+
+--------------------------------------------------
+
+4.4 Search Service
+
+Endpoint:
+GET /search
+
+Example Request:
+GET /search?country=Sri%20Lanka&role=Software%20Engineer
+
+Response:
+{
+  "results": [
+    {
+      "id": "uuid",
+      "country": "Sri Lanka",
+      "company": "Anonymous",
+      "role": "Software Engineer",
+      "experienceLevel": "Mid",
+      "salaryAmount": 350000,
+      "currency": "LKR"
+    }
+  ]
+}
+
+--------------------------------------------------
+
+4.5 Stats Service
+
+Endpoint:
+GET /stats
+
+Example Request:
+GET /stats?country=Sri%20Lanka&role=Software%20Engineer
+
+Response:
+{
+  "count": 12,
+  "average": 410000,
+  "median": 395000,
+  "p90": 550000,
+  "currency": "LKR"
+}
+
+--------------------------------------------------------------------
+
+5. Authentication Rules
+-----------------------
+
+Public Endpoints:
+- POST /api/auth/signup
+- POST /api/auth/login
+- POST /api/salaries
+- GET /api/search
+- GET /api/stats
+
+Protected Endpoints:
+- POST /api/votes
+- POST /api/reports (optional)
+
+Rule:
+- Login is required only for community actions such as voting/reporting
+- Salary submission must remain anonymous
+
+--------------------------------------------------------------------
+
+6. Approval Logic
+-----------------
+- Only authenticated users can vote
+- Each vote contributes to a score
+- A submission becomes APPROVED when threshold is reached
+
+Example Rule:
+- Upvotes >= 5 -> APPROVED
+
+--------------------------------------------------------------------
+
+7. Data Ownership
+-----------------
+
+Identity Service          -> Users, authentication data
+Salary Submission Service -> Salary submissions
+Vote Service              -> Votes
+Search Service            -> Read-only salary queries
+Stats Service             -> Aggregated data
+
+--------------------------------------------------------------------
+
+8. Key Constraints
+------------------
+- Salary submissions must remain anonymous
+- Identity data must be stored separately
+- Services must be stateless
+- All external traffic goes through BFF
+- Only approved salaries are publicly visible
+
+--------------------------------------------------------------------
+
+9. Workflow Summary
+-------------------
+1. User submits salary -> stored as PENDING
+2. User signs up / logs in -> receives token
+3. User votes on submission
+4. Submission reaches threshold -> becomes APPROVED
+5. Approved salary appears in search
+6. Stats update based on approved salaries

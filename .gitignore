@@ -1,5 +1,3 @@
 node_modules/
-.codex
 vsts-agent-linux-x64-*.tar.gz
-Docs/Notes/
 myagent/

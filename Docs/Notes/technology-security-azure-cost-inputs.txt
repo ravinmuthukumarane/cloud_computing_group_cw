@@ -1,0 +1,578 @@
+Technology Stack, Security Implementation, and Azure Cost Estimation Inputs
+==========================================================================
+
+Project: Cloud Salary Transparency System
+Deployment model: Cloud-native microservices deployed to Kubernetes on an Azure VM
+Deployment target: Azure VM running Docker, k3d, kubectl, and a self-hosted Azure DevOps agent
+
+
+1. Technology Stack
+===================
+
+The Cloud Salary Transparency System is implemented as a microservices-based
+application. The system separates the user interface, API gateway layer,
+domain-specific backend services, and database storage into independently
+containerized components.
+
+Frontend
+--------
+
+The frontend is implemented using React with Vite. Vite is used as the frontend
+build tool because it provides a lightweight development and production build
+pipeline for the React application. In the deployed environment, the frontend is
+served as static assets from an NGINX container.
+
+The frontend container is built with the Kubernetes API base path:
+
+VITE_API_BASE_URL=/api
+
+This value is specific to the Kubernetes ingress deployment. Browser requests
+are routed to /api, and the NGINX Ingress Controller forwards those requests to
+the BFF service inside the cluster.
+
+Backend Services
+----------------
+
+The backend is implemented using Node.js microservices. Each service has a
+separate Dockerfile and runs as an independent Kubernetes Deployment and Service.
+
+The backend services are:
+
+1. BFF service
+   The BFF is the public API entry point for the frontend. It exposes /api/*
+   routes externally through the ingress and forwards requests to internal
+   backend services.
+
+2. Identity service
+   The identity service handles user signup, login, token validation, and JWT
+   generation. It owns identity-related data in the PostgreSQL identity schema.
+
+3. Salary submission service
+   The salary submission service handles salary submission workflows. It stores
+   salary records in the salary schema and supports the initial pending state of
+   submitted records.
+
+4. Vote service
+   The vote service handles authenticated community voting. It updates approval
+   state based on voting rules and supports the community-driven validation
+   workflow.
+
+5. Search service
+   The search service provides read access to approved salary records. It is
+   separated from the salary submission service so that query functionality is
+   isolated from write/submission functionality.
+
+6. Stats service
+   The stats service provides aggregated salary statistics based on approved
+   salary data.
+
+Database
+--------
+
+The database layer uses PostgreSQL. The deployment uses a single PostgreSQL
+instance with multiple logical schemas:
+
+identity
+salary
+community
+
+Using separate schemas keeps service-owned data logically separated while still
+keeping the coursework deployment lightweight. This is appropriate for a
+single-VM coursework deployment because it reduces operational cost and
+complexity compared with running a separate database instance for each service.
+
+Containerization
+----------------
+
+All application services are containerized using Docker. Each backend service
+has its own Dockerfile, and the frontend is built into an NGINX-based container.
+Docker images are tagged using the Azure DevOps Build.BuildId value during the
+CI/CD process. This gives each pipeline run a unique image version.
+
+Images are pushed to Docker Hub repositories owned by two Docker Hub accounts:
+
+ravinmuthukumarane
+  bff-service
+  identity-service
+  salary-submission-service
+
+nipuniamarasinghe
+  vote-service
+  search-service
+  stats-service
+  frontend-service
+
+Orchestration
+-------------
+
+Kubernetes is provided by k3d, which runs a lightweight Kubernetes cluster inside
+Docker on the Azure VM. The cluster is a single-node cluster named:
+
+cloud-salary-cluster
+
+The Kubernetes context used by the pipeline is:
+
+k3d-cloud-salary-cluster
+
+The k3d cluster maps HTTP traffic through the k3d load balancer to the VM:
+
+VM port 8080 -> Kubernetes load balancer port 80
+VM port 8443 -> Kubernetes load balancer port 443
+
+Ingress
+-------
+
+Ingress is provided by the NGINX Ingress Controller. The ingress rules route:
+
+/      -> frontend-service:80
+/api   -> bff-service:5050
+
+Only the frontend and BFF API routes are exposed through ingress. Internal
+backend services are accessed through Kubernetes ClusterIP services.
+
+CI/CD
+-----
+
+The CI/CD workflow is implemented using Azure DevOps Pipelines. The pipeline is
+defined in:
+
+azure-pipelines.yml
+
+The pipeline runs on the main branch and uses a self-hosted Azure DevOps agent
+running on the same Azure VM as Docker and k3d. The final self-hosted agent pool
+is:
+
+cw-cc5
+
+The pipeline has two stages:
+
+1. BuildAndPush
+   Builds Docker images and pushes them to Docker Hub.
+
+2. DeployToK3d
+   Loads the k3d kubeconfig, applies Kubernetes manifests, updates image tags,
+   and waits for Kubernetes rollouts.
+
+The pipeline uses two Azure DevOps Docker service connections:
+
+dockerhub-ravinmuthukumarane
+dockerhub-nipuniamarasinghe
+
+The deployment target is an Azure VM, not Azure Kubernetes Service. This design
+was selected because the coursework environment uses a lightweight k3d cluster
+on a single VM.
+
+
+2. Security Implementation
+==========================
+
+The security implementation is based on separating public access, internal
+service communication, authentication, secret handling, and deployment access.
+The implementation is aligned with the architecture of this coursework system
+rather than a managed enterprise production environment.
+
+Public Access Boundary
+----------------------
+
+External users access the system through the Azure VM public endpoint on port
+8080. Traffic reaches the k3d load balancer and is then routed by the NGINX
+Ingress Controller.
+
+The ingress exposes only two public paths:
+
+/      for the frontend
+/api   for the backend API entry point
+
+The BFF service is the only backend service exposed through ingress. Services
+such as identity, salary-submission, vote, search, stats, and PostgreSQL are not
+directly exposed to external users.
+
+BFF as API Boundary
+-------------------
+
+The BFF service acts as the public API boundary for the frontend. The frontend
+does not call individual backend services directly. Instead, API traffic goes to
+the BFF through /api routes.
+
+This design centralizes external API routing and prevents internal service names
+and ports from becoming part of the public interface. Internal service
+communication remains inside the Kubernetes cluster.
+
+Authentication and Authorization
+--------------------------------
+
+The identity service implements the authentication flow. Users sign up and log
+in through identity endpoints exposed via the BFF. After successful login, a JWT
+is issued.
+
+The JWT is used for protected operations such as voting. The vote service
+requires authenticated requests so that voting actions are associated with a
+validated user identity.
+
+The JWT secret is treated as a deployment secret. During deployment, the Azure
+Pipeline reads the JWT_SECRET value from services/identity/.env and creates or
+updates the Kubernetes app-secrets Secret in the app namespace.
+
+Database Security and Logical Separation
+----------------------------------------
+
+The system uses a single PostgreSQL instance with multiple schemas:
+
+identity
+salary
+community
+
+This provides logical separation of data responsibilities while keeping the
+deployment simple enough for a single-VM k3d environment. The database is
+deployed inside the Kubernetes cluster and is exposed internally through a
+Kubernetes Service in the data namespace.
+
+PostgreSQL is not exposed through ingress. Application services access it using
+internal cluster networking.
+
+Kubernetes Namespace Separation
+-------------------------------
+
+The Kubernetes deployment uses separate namespaces:
+
+app
+data
+
+Application services run in the app namespace. PostgreSQL and its persistent
+volume claim run in the data namespace. This separation improves operational
+clarity and makes it easier to distinguish application workloads from data
+workloads.
+
+Secret Management
+-----------------
+
+The deployment uses Kubernetes Secrets for sensitive values. The pipeline
+creates or updates:
+
+app-secrets
+  Stores JWT_SECRET in the app namespace.
+
+app-db-secret
+  Stores DB_PASSWORD for application services in the app namespace.
+
+postgres-secret
+  Stores POSTGRES_DB, POSTGRES_USER, and POSTGRES_PASSWORD in the data namespace.
+
+The pipeline generates these secrets using kubectl create secret with
+--dry-run=client and kubectl apply. This makes the secret creation idempotent,
+so repeated deployments update the same Kubernetes Secret objects instead of
+failing when they already exist.
+
+For the coursework implementation, the source of these values is
+services/identity/.env on the repository/agent workspace. For a production
+environment, these values should be moved to Azure Key Vault or Azure DevOps
+secret variables so that secrets are not stored in repository files.
+
+Container Registry Authentication
+---------------------------------
+
+Docker Hub credentials are not written directly into the pipeline YAML. The
+pipeline uses Azure DevOps Docker service connections:
+
+dockerhub-ravinmuthukumarane
+dockerhub-nipuniamarasinghe
+
+Azure DevOps controls access to these service connections. The pipeline had to
+be explicitly authorized to use them. This avoids storing Docker Hub usernames
+and passwords directly in the YAML file.
+
+The pipeline logs in to each Docker Hub account immediately before pushing that
+account's images. This prevents one Docker Hub login from overwriting another
+before the correct images are pushed.
+
+Self-Hosted Agent Security
+--------------------------
+
+The self-hosted Azure DevOps agent runs on the same VM as Docker and k3d. This
+is necessary because the pipeline deploys to a local k3d cluster.
+
+The agent user requires access to Docker because the pipeline runs docker build,
+docker push, and k3d commands. Docker access was configured so that docker ps
+works without sudo for the agent user.
+
+This is powerful access because membership of the docker group effectively
+allows control over containers on the VM. For the coursework environment this is
+acceptable, but in a stricter production environment the build agent and
+deployment agent should be separated, or a managed Kubernetes service such as
+AKS should be used.
+
+Network Security
+----------------
+
+The Azure VM must allow inbound traffic for the application endpoint:
+
+TCP 8080
+
+The k3d cluster also maps HTTPS load balancer traffic to:
+
+TCP 8443
+
+For the current coursework deployment, the important application access path is
+HTTP on port 8080. The database and internal microservice ports are not intended
+to be opened publicly.
+
+The Azure Network Security Group should restrict inbound access to only the
+ports required for administration and application access. SSH access should be
+limited to trusted IP addresses where possible.
+
+Security Limitations
+--------------------
+
+The current implementation is suitable for coursework demonstration, but several
+areas would require improvement for production:
+
+1. Secrets should be moved from .env files to Azure Key Vault or Azure DevOps
+   secret variables.
+2. TLS should be configured for ingress instead of exposing only HTTP on port
+   8080.
+3. Docker Hub credentials should use limited-scope access tokens rather than
+   account passwords.
+4. The self-hosted agent should be hardened because it has Docker access.
+5. Database backup, restore, and encryption policies should be defined.
+6. Kubernetes network policies could be added to restrict pod-to-pod traffic.
+
+
+3. Azure Cost Estimation
+========================
+
+No cost calculation is performed in this section. Instead, this section lists
+the data required to calculate the Azure cost for the implemented deployment.
+
+Costing Scope
+-------------
+
+The deployment target is an Azure VM running:
+
+Docker
+k3d single-node Kubernetes cluster
+NGINX Ingress Controller
+PostgreSQL container
+Frontend container
+BFF container
+identity container
+salary-submission container
+vote container
+search container
+stats container
+self-hosted Azure DevOps agent
+
+The deployment does not use AKS, Azure Database for PostgreSQL, Azure Container
+Registry, Azure App Service, or Azure Load Balancer as separate managed
+services.
+
+Required Azure Pricing Inputs
+-----------------------------
+
+The following values are required to calculate the Azure cost accurately.
+
+Azure Subscription and Region
+-----------------------------
+
+Required data:
+
+1. Azure subscription type.
+2. Azure region used by the VM.
+3. Currency for the estimate.
+4. Whether student credit, free trial credit, or institutional credit applies.
+
+The region is required because VM, storage, bandwidth, and public IP pricing can
+vary by Azure region.
+
+Virtual Machine Compute
+-----------------------
+
+Required data:
+
+1. VM size.
+2. Number of vCPUs.
+3. Amount of RAM.
+4. Operating system type: Linux.
+5. Pricing model: pay-as-you-go, reserved instance, or savings plan.
+6. Expected running hours per month.
+7. Whether the VM is stopped/deallocated when not in use.
+
+For monthly estimation, the most important value is the number of hours the VM
+is allocated. A VM that is only stopped inside the operating system may still
+incur compute charges unless it is deallocated in Azure.
+
+Operating System Disk
+---------------------
+
+Required data:
+
+1. OS disk type: Standard HDD, Standard SSD, Premium SSD, or other.
+2. OS disk size in GiB.
+3. Disk redundancy type, if applicable.
+4. Expected number of disk transactions, if the selected disk type bills
+   transactions separately.
+
+Data Disk or Persistent Storage
+-------------------------------
+
+Required data:
+
+1. Whether PostgreSQL data is stored on the OS disk or a separate Azure managed
+   disk.
+2. If a separate disk is used, the disk type.
+3. Disk size in GiB.
+4. Expected growth of PostgreSQL data.
+5. Snapshot or backup frequency, if snapshots are used.
+6. Snapshot retention period.
+
+In the current k3d deployment, PostgreSQL uses a Kubernetes persistent volume
+claim inside the single-node VM environment. For Azure costing, the storage still
+maps back to disk capacity on the VM or attached managed disk.
+
+Public IP Address
+-----------------
+
+Required data:
+
+1. Public IP SKU: Basic or Standard.
+2. Public IP allocation: static or dynamic.
+3. Number of public IP addresses.
+4. Hours per month the public IP is allocated.
+
+The application is accessed through the VM public IP on port 8080.
+
+Network Bandwidth
+-----------------
+
+Required data:
+
+1. Estimated outbound data transfer per month.
+2. Estimated inbound data transfer per month.
+3. Whether users access the system from the same Azure region, another Azure
+   region, or the public internet.
+4. Expected number of users.
+5. Expected request volume per day or per month.
+6. Average response size for frontend assets.
+7. Average response size for API responses.
+8. Frequency of Docker image pulls from Docker Hub to the VM.
+
+Inbound data transfer is usually not the main cost driver, but outbound data
+transfer may be billable depending on usage and region.
+
+Network Security Group
+----------------------
+
+Required data:
+
+1. Whether an Azure Network Security Group is attached.
+2. Number of NSG rules.
+
+NSGs are usually not a major direct cost item, but they should still be listed
+in the architecture because they define inbound and outbound access.
+
+Azure DevOps
+------------
+
+Required data:
+
+1. Azure DevOps organization.
+2. Number of users.
+3. Whether the project uses free Azure Pipelines allowance.
+4. Whether Microsoft-hosted parallel jobs are used.
+5. Whether self-hosted parallel jobs are used.
+6. Number of self-hosted agents.
+7. Expected number of pipeline runs per month.
+8. Average duration of each pipeline run.
+
+In this project, the pipeline uses a self-hosted agent on the Azure VM. The
+agent itself does not create a separate Azure compute cost, but the VM must be
+running for the agent to accept jobs.
+
+Container Registry
+------------------
+
+Required data:
+
+1. Registry provider: Docker Hub.
+2. Whether Docker Hub is free or paid.
+3. Number of repositories.
+4. Image storage size.
+5. Image pull limits or paid plan requirements.
+
+This deployment uses Docker Hub rather than Azure Container Registry. Therefore,
+Azure Container Registry pricing is not required unless the project is migrated
+to ACR later.
+
+Monitoring and Logging
+----------------------
+
+Required data:
+
+1. Whether Azure Monitor is enabled.
+2. Whether Log Analytics workspace is used.
+3. Estimated log ingestion per month.
+4. Log retention period.
+5. Metrics collection requirements.
+
+If Azure Monitor or Log Analytics is not enabled, these costs may not apply.
+However, they should be considered for a production-grade deployment.
+
+Backup and Recovery
+-------------------
+
+Required data:
+
+1. Whether VM backup is enabled.
+2. Backup frequency.
+3. Backup retention period.
+4. Whether database-level backup is performed.
+5. Estimated backup storage size.
+6. Snapshot frequency for VM disks or data disks.
+
+For the coursework deployment, backup may be manual or omitted. For production,
+PostgreSQL backup and restore planning would be required.
+
+DNS and TLS
+-----------
+
+Required data:
+
+1. Whether a custom domain is used.
+2. DNS provider.
+3. Whether Azure DNS is used.
+4. Whether TLS certificates are used.
+5. Certificate provider and renewal method.
+
+The current deployment is accessed by VM public IP and port 8080. If a custom
+domain and HTTPS are added later, DNS and certificate-related costs or
+operational requirements should be included.
+
+Cost Estimation Data Summary
+----------------------------
+
+The minimum data required before calculating cost is:
+
+1. Azure region.
+2. VM size.
+3. VM running hours per month.
+4. OS disk type and size.
+5. Any additional data disk type and size.
+6. Public IP SKU and allocation type.
+7. Estimated outbound bandwidth per month.
+8. Whether backups or snapshots are enabled.
+9. Whether Azure Monitor or Log Analytics is enabled.
+10. Number and duration of Azure DevOps pipeline runs.
+11. Whether any paid Docker Hub plan is required.
+12. Whether DNS or TLS services are used.
+
+For this specific system, the main Azure cost drivers are expected to be:
+
+1. Azure VM compute.
+2. VM disk storage.
+3. Public IP allocation.
+4. Outbound bandwidth.
+5. Optional monitoring or backup services.
+
+AKS, Azure Database for PostgreSQL, Azure Container Registry, and Azure App
+Service should not be included in the base estimate because they are not used in
+the implemented deployment.
+
