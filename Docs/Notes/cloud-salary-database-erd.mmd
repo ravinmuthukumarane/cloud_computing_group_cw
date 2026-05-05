@@ -1,0 +1,43 @@
+erDiagram
+    IDENTITY_USERS {
+        uuid id PK
+        varchar email UK
+        text password_hash
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    SALARY_SUBMISSIONS {
+        uuid id PK
+        varchar country
+        varchar company
+        varchar role
+        varchar experience_level
+        numeric salary_amount
+        varchar currency
+        boolean anonymize
+        varchar status
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    COMMUNITY_VOTES {
+        uuid id PK
+        uuid submission_id FK
+        uuid user_id FK
+        varchar vote_type
+        timestamp created_at
+    }
+
+    COMMUNITY_REPORTS {
+        uuid id PK
+        uuid submission_id FK
+        uuid user_id FK
+        text reason
+        timestamp created_at
+    }
+
+    IDENTITY_USERS ||--o{ COMMUNITY_VOTES : casts
+    SALARY_SUBMISSIONS ||--o{ COMMUNITY_VOTES : receives
+    IDENTITY_USERS ||--o{ COMMUNITY_REPORTS : creates
+    SALARY_SUBMISSIONS ||--o{ COMMUNITY_REPORTS : receives

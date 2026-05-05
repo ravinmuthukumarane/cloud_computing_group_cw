@@ -1,0 +1,120 @@
+Database Design - Cloud Salary Transparency System
+=====================================================================
+
+1. Overview
+-----------
+Single PostgreSQL instance with logical separation via schemas:
+- identity
+- salary
+- community
+
+---------------------------------------------------------------------
+
+2. identity schema
+------------------
+Table: identity.users
+
+Columns:
+- id UUID PRIMARY KEY
+- email UNIQUE NOT NULL
+- password_hash NOT NULL
+- created_at
+- updated_at
+
+Notes:
+- Passwords must be hashed
+- Only this schema stores emails
+
+---------------------------------------------------------------------
+
+3. salary schema
+----------------
+Table: salary.submissions
+
+Columns:
+- id UUID PRIMARY KEY
+- country NOT NULL
+- company NOT NULL
+- role NOT NULL
+- experience_level NOT NULL
+- salary_amount NOT NULL
+- currency NOT NULL
+- anonymize BOOLEAN DEFAULT TRUE
+- status DEFAULT PENDING
+- created_at
+- updated_at
+
+Notes:
+- No user identity data stored here
+- Only APPROVED data is public
+
+---------------------------------------------------------------------
+
+4. community schema
+-------------------
+
+Table: community.votes
+- id UUID PRIMARY KEY
+- submission_id
+- user_id
+- vote_type
+- created_at
+- UNIQUE(submission_id, user_id)
+
+Table: community.reports (optional)
+- id UUID PRIMARY KEY
+- submission_id
+- user_id
+- reason
+- created_at
+
+---------------------------------------------------------------------
+
+5. Relationships
+----------------
+- votes.user_id -> identity.users.id
+- votes.submission_id -> salary.submissions.id
+
+Privacy rule:
+- No direct link between salary data and user emails in public views
+
+---------------------------------------------------------------------
+
+6. Indexing
+-----------
+- index on email
+- index on status
+- index on country
+- index on role
+- composite search index
+- vote lookup indexes
+
+---------------------------------------------------------------------
+
+7. Approval Rule
+----------------
+If upvotes >= 5:
+UPDATE salary.submissions SET status = 'APPROVED'
+
+---------------------------------------------------------------------
+
+8. Search Rule
+--------------
+Only return rows where status = APPROVED
+Apply anonymization where needed
+
+---------------------------------------------------------------------
+
+9. Stats Rule
+-------------
+Only compute from APPROVED salaries
+- average
+- median
+- percentiles
+
+---------------------------------------------------------------------
+
+10. Summary
+-----------
+Supports full workflow:
+submission -> voting -> approval -> search -> stats

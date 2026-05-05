@@ -1,0 +1,46 @@
+flowchart TB
+    dev[Developer pushes code]
+    main[Git main branch]
+    trigger[Azure DevOps Pipeline trigger]
+
+    subgraph build[Stage 1: BuildAndPush]
+        checkout1[Checkout repository]
+        dockerLogin[Login to Docker Hub<br/>two service connections]
+        buildImages[Build service images<br/>backend and frontend]
+        pushImages[Push images to Docker Hub<br/>tag: Build.BuildId]
+    end
+
+    subgraph agent[Azure VM Self-Hosted Agent]
+        vmAgent[Agent pool: cw-cc5<br/>k3d and Docker available]
+    end
+
+    subgraph deploy[Stage 2: DeployToK3d]
+        checkout2[Checkout repository]
+        kubeconfig[Load k3d kubeconfig]
+        applyManifests[kubectl apply<br/>namespaces configmaps secrets<br/>postgres apps ingress]
+        setImages[kubectl set image<br/>use Build.BuildId tag]
+        rollout[kubectl rollout status<br/>verify deployments]
+    end
+
+    subgraph runtime[k3d Kubernetes Runtime]
+        cluster[k3d cluster<br/>cloud-salary-cluster]
+        ingress[NGINX Ingress<br/>public port 8080]
+        app[Cloud Salary Transparency System]
+    end
+
+    dev --> main
+    main --> trigger
+    trigger --> checkout1
+    checkout1 --> dockerLogin
+    dockerLogin --> buildImages
+    buildImages --> pushImages
+
+    pushImages --> vmAgent
+    vmAgent --> checkout2
+    checkout2 --> kubeconfig
+    kubeconfig --> applyManifests
+    applyManifests --> setImages
+    setImages --> rollout
+    rollout --> cluster
+    cluster --> ingress
+    ingress --> app
