@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: stats
-          image: nipuniamarasinghe/stats-service:1.0.0
+          image: nipuniamarasinghe/stats-service:21
           ports:
             - containerPort: 5005
           env:

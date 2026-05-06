@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: search
-          image: nipuniamarasinghe/search-service:1.0.0
+          image: nipuniamarasinghe/search-service:21
           ports:
             - containerPort: 5004
           env:

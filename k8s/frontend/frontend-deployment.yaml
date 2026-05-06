@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: nipuniamarasinghe/frontend-service:1.0.7
+          image: nipuniamarasinghe/frontend-service:21
           imagePullPolicy: Always
           ports:
             - containerPort: 80
