@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: salary-submission
-          image: ravinmuthukumarane/salary-submission-service:1.0.1
+          image: ravinmuthukumarane/salary-submission-service:21
           imagePullPolicy: Always
           ports:
             - containerPort: 5002
